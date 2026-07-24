@@ -7,7 +7,7 @@ import {
   CheckCircle2, ArrowUpRight, ArrowDownRight, 
   LayoutDashboard, PieChart, FileText, GitCompare, Settings, 
   LogOut, Languages, Video, Scan, Activity, Download, FileSpreadsheet, FileCode,
-  Calendar, Filter, TrendingUp, Zap, ShieldCheck
+  Calendar, Filter, TrendingUp, Zap, ShieldCheck, BarChart as BarChartIcon
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 
@@ -156,7 +156,7 @@ export default function Home() {
               RIY
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-800">{isAr ? "فرع الرياض الرئيسي" : "Riyadh Main Branch"}</p>
+              <p className="text-xs font-bold text-slate-800">{isAr ? "فرع المدينة الرئيسي" : "Riyadh Main Branch"}</p>
               <p className="text-[10px] text-slate-400">{isAr ? "متجر #104" : "Store #104"}</p>
             </div>
           </div>
@@ -384,7 +384,7 @@ export default function Home() {
                   title={isAr ? "تقرير مقارنة الفروع والكفاءة" : "Branch Efficiency Report"}
                   format="PDF / JSON"
                   desc={isAr ? "مقارنة كفاءة الفروع وسرعة الخدمة ومعدلات التردد." : "Comparative performance benchmarks across branch locations."}
-                  icon={<BarChart size={24} className="text-blue-500" />}
+                  icon={<BarChartIcon size={24} className="text-blue-500" />}
                   onDownload={() => handleDownload("Excel")}
                   isAr={isAr}
                 />
@@ -454,3 +454,5 @@ function ReportExportCard({ title, format, desc, icon, onDownload, isAr }: any) 
     </div>
   );
 }
+  
+   
