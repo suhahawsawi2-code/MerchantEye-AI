@@ -8,9 +8,10 @@ import {
   ChevronDown, Languages, Play, BarChart2, CheckCircle2,
   Building2, Lock, Flame, Upload, Pause, LayoutDashboard, PieChart,
   FileText, GitCompare, Settings, LogOut, Video, Scan, Activity, Download,
-  FileSpreadsheet, FileCode, Calendar, BarChart as BarChartIcon, Mail
+  FileSpreadsheet, FileCode, Calendar, BarChart as BarChartIcon, Mail,
+  MapPin, UserCheck, Zap, AlertCircle
 } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 
 // بيانات محاكاة الفيديو
 const videoTimelineData = [
@@ -66,14 +67,22 @@ const videoTimelineData = [
   }
 ];
 
+// بيانات التحليلات التفصيلية
 const hourlyAnalytics = [
-  { hour: "08 AM", footfall: 35, avgDwell: 2.1 },
-  { hour: "10 AM", footfall: 78, avgDwell: 3.4 },
-  { hour: "12 PM", footfall: 142, avgDwell: 5.8 },
-  { hour: "02 PM", footfall: 98, avgDwell: 4.2 },
-  { hour: "04 PM", footfall: 85, avgDwell: 3.9 },
-  { hour: "06 PM", footfall: 190, avgDwell: 7.1 },
-  { hour: "08 PM", footfall: 130, avgDwell: 4.8 },
+  { hour: "08 AM", footfall: 35, avgDwell: 2.1, queuePeak: 1 },
+  { hour: "10 AM", footfall: 78, avgDwell: 3.4, queuePeak: 2 },
+  { hour: "12 PM", footfall: 142, avgDwell: 5.8, queuePeak: 5 },
+  { hour: "02 PM", footfall: 98, avgDwell: 4.2, queuePeak: 3 },
+  { hour: "04 PM", footfall: 85, avgDwell: 3.9, queuePeak: 2 },
+  { hour: "06 PM", footfall: 190, avgDwell: 7.1, queuePeak: 6 },
+  { hour: "08 PM", footfall: 130, avgDwell: 4.8, queuePeak: 4 },
+];
+
+const zoneAnalytics = [
+  { zone: "منطقة المحاسبين (Checkout Area)", traffic: "عالي جداً (Hot)", dwellAvg: "4.2 min", status: "تكدس متكرر", color: "#EF4444" },
+  { zone: "مدخل المتجر الرئيسي (Entrance)", traffic: "عالي (Warm)", dwellAvg: "0.8 min", status: "انسيابي", color: "#3B82F6" },
+  { zone: "رفوف المأكولات الطازجة (Fresh Food)", traffic: "متوسط (Warm)", dwellAvg: "3.1 min", status: "طبيعي", color: "#10B981" },
+  { zone: "قسم العروض الخاصة (Promotions)", traffic: "عالي جداً (Hot)", dwellAvg: "5.5 min", status: "انتباه عالي", color: "#F59E0B" },
 ];
 
 export default function Home() {
@@ -123,7 +132,7 @@ export default function Home() {
     (item) => currentTime >= item.startTime && currentTime < item.endTime
   ) || videoTimelineData[0];
 
-  // 1️⃣ VIEW: LANDING PAGE (الواجهة الرئيسية)
+  // 1️⃣ VIEW: LANDING PAGE
   if (currentView === "landing") {
     return (
       <div dir={isAr ? "rtl" : "ltr"} className="min-h-screen bg-[#090D16] text-slate-100 font-sans antialiased overflow-x-hidden selection:bg-blue-500 selection:text-white">
@@ -149,7 +158,7 @@ export default function Home() {
             <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
               <a href="#features" className="hover:text-white transition">{isAr ? "المميزات" : "Features"}</a>
               <a href="#how-it-works" className="hover:text-white transition">{isAr ? "كيف يعمل؟" : "How It Works"}</a>
-              <a href="#preview" className="hover:text-white transition">{isAr ? "اللوحة" : "Dashboard"}</a>
+              <button onClick={() => setCurrentView("dashboard")} className="hover:text-white transition">{isAr ? "اللوحة" : "Dashboard"}</button>
               <a href="#pricing" className="hover:text-white transition">{isAr ? "الأسعار" : "Pricing"}</a>
               <a href="#faq" className="hover:text-white transition">{isAr ? "الأسئلة الشائعة" : "FAQ"}</a>
             </div>
@@ -266,7 +275,7 @@ export default function Home() {
     );
   }
 
-  // 2️⃣ VIEW: LOGIN SCREEN (تسجيل الدخول)
+  // 2️⃣ VIEW: LOGIN SCREEN
   if (currentView === "login") {
     return (
       <div dir={isAr ? "rtl" : "ltr"} className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
@@ -302,7 +311,7 @@ export default function Home() {
     );
   }
 
-  // 3️⃣ VIEW: DASHBOARD (لوحة التحكم التنفيذية)
+  // 3️⃣ VIEW: DASHBOARD
   return (
     <div dir={isAr ? "rtl" : "ltr"} className="flex h-screen bg-[#F8FAFC] text-slate-800 font-sans overflow-hidden transition-all duration-300">
       
@@ -338,7 +347,7 @@ export default function Home() {
               RIY
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-800">{isAr ? "فرع المدينة الرئيسي" : "Riyadh Main Branch"}</p>
+              <p className="text-xs font-bold text-slate-800">{isAr ? "فرع الرياض الرئيسي" : "Riyadh Main Branch"}</p>
               <p className="text-[10px] text-slate-400">{isAr ? "متجر #104" : "Store #104"}</p>
             </div>
           </div>
@@ -375,6 +384,7 @@ export default function Home() {
           </div>
         </header>
 
+        {/* TAB 1: DASHBOARD */}
         {activeTab === "dashboard" && (
           <div className="space-y-8">
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -442,6 +452,127 @@ export default function Home() {
                 <button className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm">{isAr ? "تطبيق الإجراء" : "Apply Action"}</button>
               </div>
             </section>
+          </div>
+        )}
+
+        {/* TAB 2: DETAILED ANALYTICS (صفحة التحليلات المطلوبة) */}
+        {activeTab === "analytics" && (
+          <div className="space-y-8">
+            {/* Top Stat Row */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <KPICard title={isAr ? "إجمالي الزوار اليوم" : "Total Visitors"} value="756" change="+14.2%" isPositive={true} badge="Daily" icon={<Users className="w-5 h-5 text-blue-600" />} />
+              <KPICard title={isAr ? "ساعة الذروة اليومية" : "Peak Hour"} value="06:00 PM" change="190 Visitors" isPositive={true} badge="High Traffic" icon={<Zap className="w-5 h-5 text-amber-500" />} />
+              <KPICard title={isAr ? "متوسط المكوث (Dwell)" : "Avg Dwell Time"} value="4.5 min" change="-0.4 min" isPositive={true} badge="Optimal" icon={<Clock className="w-5 h-5 text-emerald-600" />} />
+              <KPICard title={isAr ? "معدل التكدس بالنظام" : "Congestion Rate"} value="8.4%" change="-2.1%" isPositive={true} badge="Controlled" icon={<AlertCircle className="w-5 h-5 text-rose-500" />} />
+            </section>
+
+            {/* Charts Grid */}
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Hourly Footfall Chart */}
+              <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">{isAr ? "حركة الزوار بالساعات (Footfall Trend)" : "Hourly Footfall Trend"}</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{isAr ? "توزيع تدفق الزوار على مدار اليوم" : "Distribution of customer visits throughout the day"}</p>
+                  </div>
+                  <span className="text-[10px] bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg font-bold">Today</span>
+                </div>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={hourlyAnalytics}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderRadius: '12px', color: '#FFF', fontSize: '12px' }} />
+                      <Area type="monotone" dataKey="footfall" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorFootfall)" />
+                      <defs>
+                        <linearGradient id="colorFootfall" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0.0}/>
+                        </linearGradient>
+                      </defs>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Dwell Time & Queue Chart */}
+              <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">{isAr ? "أقصى طول لطابور الانتظار (Queue Peak)" : "Peak Queue Length"}</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{isAr ? "أعلى عدد منتظرين مسجل عند المحاسبين" : "Highest waiting count per hour"}</p>
+                  </div>
+                  <span className="text-[10px] bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg font-bold">Live Stream Data</span>
+                </div>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={hourlyAnalytics}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderRadius: '12px', color: '#FFF', fontSize: '12px' }} />
+                      <Bar dataKey="queuePeak" fill="#F59E0B" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
+
+            {/* Zone Analytics & Heatmap Breakdown */}
+            <section className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">{isAr ? "تحليل المناطق الكثيفة والباردة (Hot/Cold Zones)" : "Heatmap & Zone Performance"}</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{isAr ? "رصد توزع حركة الزوار ومدة بقائهم في أقسام المتجر" : "Customer dwell time and footfall by store section"}</p>
+                </div>
+                <button className="text-xs font-bold text-blue-600 hover:underline">{isAr ? "تصدير الخريطة الحرارية" : "Export Heatmap"}</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {zoneAnalytics.map((item, idx) => (
+                  <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/60 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-white text-slate-700 shadow-sm">{item.status}</span>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900">{item.zone}</h4>
+                      <p className="text-[11px] text-slate-500 mt-1">{isAr ? "معدل الحركة:" : "Traffic:"} <span className="font-bold text-slate-800">{item.traffic}</span></p>
+                    </div>
+                    <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center text-[11px]">
+                      <span className="text-slate-400">{isAr ? "متوسط المكوث:" : "Avg Dwell:"}</span>
+                      <span className="font-bold font-mono text-slate-800">{item.dwellAvg}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* TAB 3: REPORTS & EXPORTS */}
+        {activeTab === "reports" && (
+          <div className="space-y-6">
+            <div className="bg-white/80 backdrop-blur-md p-8 rounded-3xl border border-slate-200/80 shadow-sm text-center max-w-2xl mx-auto space-y-4">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto text-2xl">
+                📄
+              </div>
+              <h3 className="font-black text-lg text-slate-900">{isAr ? "مركز تصدير التقارير الموثقة" : "Export Official Reports"}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+                {isAr ? "اختر الصيغة المناسبة لتصدير تقارير حركة الزوار، أوقات الانتظار، وتقييم تجربة العملاء الموثقة للتحكيم." : "Export verified analytics reports for retail audits and judging evaluations."}
+              </p>
+              <div className="flex items-center justify-center gap-4 pt-4">
+                <button onClick={() => handleDownload("PDF")} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2 transition">
+                  <Download size={16} />
+                  <span>PDF Report</span>
+                </button>
+                <button onClick={() => handleDownload("CSV")} className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm flex items-center gap-2 transition">
+                  <FileSpreadsheet size={16} />
+                  <span>CSV Data</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
