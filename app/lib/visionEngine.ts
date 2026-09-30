@@ -65,13 +65,40 @@ function loadOrt(): Promise<any> {
 }
 
 let sessionPromise: Promise<any> | null = null;
-export function loadModel(): Promise<any> {
+const progressListeners = new Set<(pct: number) => void>();
+
+async function fetchWithProgress(url: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${url}`);
+  const total = Number(res.headers.get("content-length")) || 12_800_000;
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    const pct = Math.min(99, Math.round((got / total) * 100));
+    progressListeners.forEach((f) => f(pct));
+  }
+  const out = new Uint8Array(got);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+/** Load the model (once). `onProgress` receives the download percentage 0-100. */
+export function loadModel(onProgress?: (pct: number) => void): Promise<any> {
+  if (onProgress) progressListeners.add(onProgress);
   if (!sessionPromise) {
     sessionPromise = (async () => {
-      const ort = await loadOrt();
+      const [ort, bytes] = await Promise.all([loadOrt(), fetchWithProgress(MODEL_URL)]);
       ort.env.wasm.wasmPaths = "/ort/";
       ort.env.wasm.numThreads = (window as any).crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
-      return ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+      const session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+      progressListeners.forEach((f) => f(100));
+      return session;
     })();
     sessionPromise.catch(() => { sessionPromise = null; });
   }

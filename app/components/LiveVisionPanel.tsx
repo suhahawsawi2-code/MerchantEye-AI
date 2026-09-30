@@ -32,6 +32,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoName, setVideoName] = useState("");
   const [modelState, setModelState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadPct, setLoadPct] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [slow, setSlow] = useState(false);
   const [ms, setMs] = useState(0);
@@ -48,7 +49,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
 
   // load the model once the panel is shown
   useEffect(() => {
-    loadModel().then(() => setModelState("ready")).catch(() => setModelState("error"));
+    loadModel(setLoadPct).then(() => setModelState("ready")).catch(() => setModelState("error"));
   }, []);
 
   const resetAnalysis = useCallback(() => {
@@ -227,7 +228,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
   };
 
   const statusChip =
-    modelState === "loading" ? { c: "bg-amber-100 text-amber-800", txt: t("جاري تحميل نموذج YOLOv8…", "Loading YOLOv8 model…") } :
+    modelState === "loading" ? { c: "bg-amber-100 text-amber-800", txt: `${t("تحميل نموذج YOLOv8", "Loading YOLOv8 model")} ${loadPct}%` } :
     modelState === "error" ? { c: "bg-rose-100 text-rose-800", txt: t("تعذّر تحميل النموذج", "Model failed to load") } :
     !videoSrc ? { c: "bg-emerald-100 text-emerald-800", txt: t("النموذج جاهز", "Model ready") } :
     { c: "bg-blue-100 text-blue-800", txt: `${t("تحليل مباشر", "Live analysis")} · ${ms ? Math.round(ms) + " ms/frame" : "…"}` };
@@ -280,7 +281,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
         )}
         {modelState === "loading" && videoSrc && (
           <div className="absolute bottom-4 left-4 z-30 flex items-center gap-2 text-xs font-bold text-white bg-slate-900/80 px-3 py-2 rounded-xl">
-            <Loader2 size={14} className="animate-spin" />{t("تحميل النموذج…", "Loading model…")}
+            <Loader2 size={14} className="animate-spin" />{t("تحميل النموذج", "Loading model")} {loadPct}%
           </div>
         )}
       </div>
