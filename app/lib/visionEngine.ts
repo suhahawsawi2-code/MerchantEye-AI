@@ -227,7 +227,7 @@ export class QueueTracker {
   get uniqueCustomers() { return this.everSeen.size; }
   get finishedWaits() { return [...this.completedWaits]; }
 
-  update(dets: Detection[], t: number, vw: number, vh: number, queue: Zone, staff: Zone | null): TrackState[] {
+  update(dets: Detection[], t: number, vw: number, vh: number, queue: Zone[], staff: Zone[]): TrackState[] {
     // time went backwards (video looped / seeked) -> start a fresh session
     if (this.tracks.length && t + 0.25 < Math.max(...this.tracks.map((k) => k.lastT))) this.tracks = [];
 
@@ -253,8 +253,8 @@ export class QueueTracker {
       usedT.add(ti); usedD.add(di); assigned.set(di, ti);
     }
 
-    const inZone = (z: Zone | null, x: number, y: number) =>
-      !!z && x >= z.x1 * vw && x <= z.x2 * vw && y >= z.y1 * vh && y <= z.y2 * vh;
+    const inZone = (zones: Zone[], x: number, y: number) =>
+      zones.some((z) => x >= z.x1 * vw && x <= z.x2 * vw && y >= z.y1 * vh && y <= z.y2 * vh);
 
     const states: TrackState[] = [];
     dets.forEach((d, di) => {

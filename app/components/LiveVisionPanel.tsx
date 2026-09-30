@@ -36,13 +36,15 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [slow, setSlow] = useState(false);
   const [ms, setMs] = useState(0);
-  const [queueZone, setQueueZone] = useState<Zone>(DEFAULT_QUEUE);
-  const [staffZone, setStaffZone] = useState<Zone | null>(null);
+  // several lanes / cashiers: one rectangle per queue and per cashier
+  const [queueZones, setQueueZones] = useState<Zone[]>([DEFAULT_QUEUE]);
+  const [queueCustom, setQueueCustom] = useState(false);
+  const [staffZones, setStaffZones] = useState<Zone[]>([]);
   const [editMode, setEditMode] = useState<EditMode>("none");
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragRect, setDragRect] = useState<Zone | null>(null);
-  const zonesRef = useRef({ queueZone, staffZone });
-  useEffect(() => { zonesRef.current = { queueZone, staffZone }; }, [queueZone, staffZone]);
+  const zonesRef = useRef({ queueZones, staffZones });
+  useEffect(() => { zonesRef.current = { queueZones, staffZones }; }, [queueZones, staffZones]);
   const [hasResults, setHasResults] = useState(false);
 
   const t = (ar: string, en: string) => (isAr ? ar : en);
@@ -106,9 +108,9 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
       ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(x, y, zw, zh); ctx.setLineDash([]);
       ctx.font = "bold 11px ui-monospace, monospace"; ctx.fillStyle = color; ctx.fillText(label, x + 6, y + 14);
     };
-    const { queueZone: qz, staffZone: sz } = zonesRef.current;
-    drawZone(qz, "#3B82F6", "QUEUE ZONE");
-    if (sz) drawZone(sz, "#94A3B8", "STAFF ZONE");
+    const { queueZones: qz, staffZones: sz } = zonesRef.current;
+    qz.forEach((z, i) => drawZone(z, "#3B82F6", `QUEUE ${i + 1}`));
+    sz.forEach((z, i) => drawZone(z, "#94A3B8", `STAFF ${i + 1}`));
     if (dragRect) drawZone(dragRect, editMode === "staff" ? "#94A3B8" : "#3B82F6", "");
 
     const thr = settingsRef.current.waitThresholdSec;
@@ -150,7 +152,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
         const tNow = v.currentTime;
         lastTRef.current = tNow;
         const { dets, ms: took } = await detectPeople(v, settingsRef.current.conf);
-        const { queueZone: qz, staffZone: sz } = zonesRef.current;
+        const { queueZones: qz, staffZones: sz } = zonesRef.current;
         const states = trackerRef.current.update(dets, tNow, v.videoWidth, v.videoHeight, qz, sz);
         statesRef.current = states;
         const stats = computeStats(states, tNow, took, settingsRef.current);
@@ -197,7 +199,11 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
   };
   const onUp = () => {
     if (dragRect && dragRect.x2 - dragRect.x1 > 0.03 && dragRect.y2 - dragRect.y1 > 0.03) {
-      if (editMode === "queue") setQueueZone(dragRect); else if (editMode === "staff") setStaffZone(dragRect);
+      if (editMode === "queue") {
+        // the first drawn lane replaces the default zone, the next ones are added
+        setQueueZones((zs) => (queueCustom ? [...zs, dragRect] : [dragRect]));
+        setQueueCustom(true);
+      } else if (editMode === "staff") setStaffZones((zs) => [...zs, dragRect]);
       resetAnalysis();
     }
     setDragStart(null); setDragRect(null); setEditMode("none");
@@ -217,7 +223,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
       completedQueueVisits: waits.length,
       avgCompletedWaitSec: waits.length ? +(waits.reduce((a, b) => a + b, 0) / waits.length).toFixed(1) : 0,
       maxWaitSec: +Math.max(0, ...h.map((x) => x.maxWaitSec)).toFixed(1),
-      settings: { ...settingsRef.current, queueZone: zonesRef.current.queueZone, staffZone: zonesRef.current.staffZone },
+      settings: { ...settingsRef.current, queueZones: zonesRef.current.queueZones, staffZones: zonesRef.current.staffZones },
     };
     const frames = h.map((x) => ({ t: +x.t.toFixed(2), customers: x.visitorsNow, queue: x.queueCount, staff: x.staffCount, avgWaitSec: +x.avgWaitSec.toFixed(1) }));
     const blob = new Blob([JSON.stringify({ summary, frames }, null, 1)], { type: "application/json" });
@@ -268,7 +274,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
         <canvas ref={canvasRef}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
           className={`absolute inset-0 w-full h-full ${editMode !== "none" ? "cursor-crosshair z-30" : "pointer-events-none z-20"}`} />
-        {videoSrc && !staffZone && editMode === "none" && (
+        {videoSrc && staffZones.length === 0 && editMode === "none" && (
           <button onClick={() => setEditMode("staff")}
             className="absolute top-3 left-3 z-30 bg-amber-500/95 hover:bg-amber-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow">
             {t("الكاشير يُحسب عميلاً؟ حدّدي منطقة الموظفين", "Cashier counted as a customer? Set the staff zone")}
@@ -295,19 +301,19 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => setEditMode(editMode === "queue" ? "none" : "queue")} disabled={!videoSrc}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold border transition disabled:opacity-40 ${editMode === "queue" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-200 hover:bg-blue-50"}`}>
-          <Square size={13} />{t("تحديد منطقة الطابور", "Set queue zone")}
+          <Square size={13} />{queueCustom ? t("+ منطقة طابور أخرى", "+ Another queue zone") : t("تحديد منطقة الطابور", "Set queue zone")}
         </button>
         <button onClick={() => setEditMode(editMode === "staff" ? "none" : "staff")} disabled={!videoSrc}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold border transition disabled:opacity-40 ${editMode === "staff" ? "bg-slate-600 text-white border-slate-600" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}>
-          <Square size={13} />{t("منطقة الموظفين (اختياري)", "Staff zone (optional)")}
+          <Square size={13} />{staffZones.length ? t("+ كاشير آخر", "+ Another cashier") : t("منطقة الموظفين (اختياري)", "Staff zone (optional)")}
         </button>
         <button onClick={() => { const next = !slow; setSlow(next); if (videoRef.current) videoRef.current.playbackRate = next ? 0.5 : 1; }} disabled={!videoSrc}
           className={`px-3 py-2 rounded-xl font-bold border transition disabled:opacity-40 ${slow ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}>
           {t("تشغيل بطيء 0.5x", "Slow 0.5x")}
         </button>
-        {staffZone && (
-          <button onClick={() => { setStaffZone(null); resetAnalysis(); }} className="px-2 py-2 text-slate-500 hover:text-slate-800 font-bold">
-            {t("إزالة منطقة الموظفين", "Remove staff zone")}
+        {(queueCustom || staffZones.length > 0) && (
+          <button onClick={() => { setQueueZones([DEFAULT_QUEUE]); setQueueCustom(false); setStaffZones([]); resetAnalysis(); }} className="px-2 py-2 text-slate-500 hover:text-slate-800 font-bold">
+            {t("مسح المناطق", "Clear zones")}
           </button>
         )}
         <button onClick={downloadResults} disabled={!hasResults}
