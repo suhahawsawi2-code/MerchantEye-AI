@@ -271,9 +271,15 @@ export class QueueTracker {
         this.tracks.push(k);
       }
       const fx = (d.x1 + d.x2) / 2, fy = d.y2;   // "feet" point
-      if (inZone(staff, fx, fy)) k.staffHits++;
-      const isStaff = k.hits >= 3 && k.staffHits / k.hits > 0.6;
-      if (!isStaff && k.hits >= 2) this.everSeen.add(k.id);
+      // Behind a counter the cashier's feet are usually hidden, so test the body centre too.
+      const cy = (d.y1 + d.y2) / 2;
+      const inStaffNow = inZone(staff, fx, fy) || inZone(staff, fx, cy);
+      if (inStaffNow) k.staffHits++;
+      const isStaff = inStaffNow || (k.hits >= 3 && k.staffHits / k.hits > 0.5);
+      if (isStaff) {
+        this.everSeen.delete(k.id);
+        k.queueEnter = null; k.queueLastIn = null;
+      } else if (k.hits >= 2) this.everSeen.add(k.id);
       if (!isStaff && inZone(queue, fx, fy)) {
         if (k.queueEnter === null) k.queueEnter = t;
         k.queueLastIn = t;

@@ -268,10 +268,16 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
         <canvas ref={canvasRef}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
           className={`absolute inset-0 w-full h-full ${editMode !== "none" ? "cursor-crosshair z-30" : "pointer-events-none z-20"}`} />
+        {videoSrc && !staffZone && editMode === "none" && (
+          <button onClick={() => setEditMode("staff")}
+            className="absolute top-3 left-3 z-30 bg-amber-500/95 hover:bg-amber-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow">
+            {t("الكاشير يُحسب عميلاً؟ حدّدي منطقة الموظفين", "Cashier counted as a customer? Set the staff zone")}
+          </button>
+        )}
         {editMode !== "none" && (
           <div className="absolute top-3 inset-x-3 z-40 bg-slate-900/90 text-white text-xs font-bold p-2 rounded-xl text-center pointer-events-none">
             {editMode === "queue" ? t("اسحبي مستطيلاً فوق مكان وقوف الطابور", "Drag a rectangle over where the queue stands")
-              : t("اسحبي مستطيلاً فوق مكان الكاشير/الموظفين", "Drag a rectangle over the cashier / staff area")}
+              : t("اسحبي مستطيلاً يغطي الكاشير خلف الكاونتر (من رأسه إلى الكاونتر)", "Drag a rectangle covering the cashier behind the counter")}
           </div>
         )}
         {videoSrc && (
