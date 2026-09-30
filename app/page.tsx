@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useRef, useEffect } from "react";
+import { motion } from "framer-motion";
 import { 
   Sparkles, Camera, TrendingUp, Clock, ShieldCheck, 
   Layers, ArrowRight, Check, HelpCircle, Users, 
@@ -13,59 +13,37 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 
-// بيانات محاكاة الفيديو
-const videoTimelineData = [
-  {
-    startTime: 0,
-    endTime: 3,
-    cxScore: "96 / 100",
-    waitTime: "1.2 min",
-    visitorsNow: 3,
-    queueCount: 1,
-    boxes: [{ id: 101, label: "Customer #101", x: "20%", y: "30%", dwell: "0.8m", confidence: "99%", type: "green" }],
-    insight: "انسيابية عالية جداً عند المدخل والمحاسب الرئيسي."
-  },
-  {
-    startTime: 3,
-    endTime: 7,
-    cxScore: "92 / 100",
-    waitTime: "2.4 min",
-    visitorsNow: 5,
-    queueCount: 2,
-    boxes: [
-      { id: 101, label: "Customer #101", x: "45%", y: "40%", dwell: "1.5m", confidence: "97%", type: "green" },
-      { id: 102, label: "Queue #1", x: "70%", y: "55%", dwell: "2.1m", confidence: "94%", type: "blue" }
-    ],
-    insight: "بدأ تشكل طابور خفيف عند الكاونتر، أوقات الخدمة ضمن النطاق الممتاز."
-  },
-  {
-    startTime: 7,
-    endTime: 12,
-    cxScore: "88 / 100",
-    waitTime: "3.8 min",
-    visitorsNow: 8,
-    queueCount: 4,
-    boxes: [
-      { id: 101, label: "Customer #101", x: "50%", y: "35%", dwell: "2.8m", confidence: "98%", type: "green" },
-      { id: 102, label: "Queue #1", x: "65%", y: "50%", dwell: "3.2m", confidence: "96%", type: "blue" },
-      { id: 103, label: "Queue #2", x: "78%", y: "60%", dwell: "1.1m", confidence: "92%", type: "amber" }
-    ],
-    insight: "ارتفاع عدد المنتظرين إلى 4 أشخاص. يُنصح بالاستعداد لفتح كاونتر الإسراع."
-  },
-  {
-    startTime: 12,
-    endTime: 30,
-    cxScore: "94 / 100",
-    waitTime: "2.1 min",
-    visitorsNow: 6,
-    queueCount: 1,
-    boxes: [
-      { id: 104, label: "Customer #104", x: "30%", y: "45%", dwell: "1.0m", confidence: "99%", type: "green" },
-      { id: 105, label: "Queue #1", x: "60%", y: "50%", dwell: "0.9m", confidence: "95%", type: "blue" }
-    ],
-    insight: "عودة أوقات الانتظار لمعدلاتها السريعة وتراجع الازدحام."
-  }
-];
+// نتائج التحليل الحقيقية تأتي من سكربت analysis/analyze.py (YOLOv8 + ByteTrack)
+// الملفات الافتراضية: public/demo/analysis.json و public/demo/annotated.mp4
+type TimelineEntry = {
+  startTime: number;
+  endTime: number;
+  visitorsNow: number;
+  queueCount: number;
+  staffCount: number;
+  avgWaitSec: number;
+  maxWaitSec: number;
+  cxScore: number;
+  level: "ok" | "warning" | "alert";
+  insightAr: string;
+  insightEn: string;
+};
+type AnalysisSummary = {
+  video: string;
+  durationSec: number;
+  model: string;
+  processingFps: number | null;
+  uniqueCustomers: number;
+  peakQueue: number;
+  avgWaitSec: number;
+  maxWaitSec: number;
+};
+type Analysis = { summary: AnalysisSummary; timeline: TimelineEntry[] };
+
+const formatWait = (sec: number) => {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
 
 // بيانات التحليلات التفصيلية
 const hourlyAnalytics = [
@@ -94,15 +72,46 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
 
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const isAr = lang === "ar";
 
-  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setVideoSrc(URL.createObjectURL(file));
+  // تحميل نتيجة التحليل التجريبية (إن وُجدت) من مجلد public/demo
+  useEffect(() => {
+    fetch("/demo/analysis.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: Analysis | null) => {
+        if (data?.timeline?.length) {
+          setAnalysis(data);
+          setVideoSrc("/demo/annotated.mp4");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // ارفعي الملفين معاً: الفيديو المحلَّل (_annotated.mp4) وملف النتائج (_analysis.json)
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    const video = files.find((f) => f.type.startsWith("video/") || /\.(mp4|m4v|mov)$/i.test(f.name));
+    const json = files.find((f) => f.name.toLowerCase().endsWith(".json"));
+    if (!video || !json) {
+      setUploadError(isAr
+        ? "اختاري ملفين معاً: الفيديو المحلَّل (annotated.mp4) وملف النتائج (analysis.json) الناتجين من سكربت التحليل."
+        : "Select both files together: the annotated video and the analysis JSON produced by the analysis script.");
+      return;
+    }
+    try {
+      const data = JSON.parse(await json.text()) as Analysis;
+      if (!data.timeline?.length) throw new Error("empty");
+      setAnalysis(data);
+      setVideoSrc(URL.createObjectURL(video));
+      setUploadError(null);
       setIsPlaying(true);
       setCurrentTime(0);
+    } catch {
+      setUploadError(isAr ? "ملف النتائج غير صالح." : "Invalid analysis file.");
     }
   };
 
@@ -128,9 +137,13 @@ export default function Home() {
     }, 1200);
   };
 
-  const currentFrameData = videoTimelineData.find(
-    (item) => currentTime >= item.startTime && currentTime < item.endTime
-  ) || videoTimelineData[0];
+  const currentFrameData: TimelineEntry | null = analysis
+    ? analysis.timeline.find((item) => currentTime >= item.startTime && currentTime < item.endTime)
+      ?? analysis.timeline[analysis.timeline.length - 1]
+    : null;
+  const insightText = currentFrameData
+    ? (isAr ? currentFrameData.insightAr : currentFrameData.insightEn)
+    : (isAr ? "لا توجد نتائج تحليل بعد. شغّلي سكربت التحليل على فيديو ثم ارفعي الملفين الناتجين." : "No analysis yet. Run the analysis script on a video, then upload both output files.");
 
   // 1️⃣ VIEW: LANDING PAGE
   if (currentView === "landing") {
@@ -156,11 +169,7 @@ export default function Home() {
             </div>
 
             <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-              <a href="#features" className="hover:text-white transition">{isAr ? "المميزات" : "Features"}</a>
-              <a href="#how-it-works" className="hover:text-white transition">{isAr ? "كيف يعمل؟" : "How It Works"}</a>
               <button onClick={() => setCurrentView("dashboard")} className="hover:text-white transition">{isAr ? "اللوحة" : "Dashboard"}</button>
-              <a href="#pricing" className="hover:text-white transition">{isAr ? "الأسعار" : "Pricing"}</a>
-              <a href="#faq" className="hover:text-white transition">{isAr ? "الأسئلة الشائعة" : "FAQ"}</a>
             </div>
 
             <div className="flex items-center gap-4">
@@ -388,10 +397,10 @@ export default function Home() {
         {activeTab === "dashboard" && (
           <div className="space-y-8">
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <KPICard title={isAr ? "مؤشر تجربة العملاء" : "CX Score"} value={currentFrameData.cxScore} change="Live" isPositive={true} badge="Live" icon={<Sparkles className="w-5 h-5 text-blue-600" />} />
-              <KPICard title={isAr ? "متوسط وقت الانتظار" : "Avg Waiting Time"} value={currentFrameData.waitTime} change="Auto Sync" isPositive={true} badge="Realtime" icon={<Clock className="w-5 h-5 text-amber-500" />} />
-              <KPICard title={isAr ? "العملاء الآن" : "Live Customers"} value={`${currentFrameData.visitorsNow} ${isAr ? "أشخاص" : "People"}`} change="Vision AI" isPositive={true} badge="Detected" icon={<Users className="w-5 h-5 text-teal-600" />} />
-              <KPICard title={isAr ? "طابور الانتظار" : "Queue Count"} value={`${currentFrameData.queueCount} ${isAr ? "منتظرين" : "Waiting"}`} change="Camera Stream" isPositive={currentFrameData.queueCount <= 2} badge={currentFrameData.queueCount > 2 ? "Crowded" : "Normal"} icon={<Flame className="w-5 h-5 text-rose-500" />} />
+              <KPICard title={isAr ? "مؤشر تجربة العملاء" : "CX Score"} value={currentFrameData ? `\u2066${currentFrameData.cxScore} / 100\u2069` : "—"} change={isAr ? "مؤشر محسوب" : "Computed index"} isPositive={true} badge="Index" icon={<Sparkles className="w-5 h-5 text-blue-600" />} />
+              <KPICard title={isAr ? "متوسط وقت الانتظار" : "Avg Waiting Time"} value={currentFrameData ? formatWait(currentFrameData.avgWaitSec) : "—"} change={isAr ? "من التتبع" : "From tracking"} isPositive={!currentFrameData || currentFrameData.level !== "alert"} badge={currentFrameData?.level === "alert" ? "Alert" : "Normal"} icon={<Clock className="w-5 h-5 text-amber-500" />} />
+              <KPICard title={isAr ? "العملاء الآن" : "Live Customers"} value={currentFrameData ? `${currentFrameData.visitorsNow} ${isAr ? "أشخاص" : "People"}` : "—"} change="YOLOv8" isPositive={true} badge="Detected" icon={<Users className="w-5 h-5 text-teal-600" />} />
+              <KPICard title={isAr ? "طابور الانتظار" : "Queue Count"} value={currentFrameData ? `${currentFrameData.queueCount} ${isAr ? "منتظرين" : "Waiting"}` : "—"} change={isAr ? "منطقة الطابور" : "Queue zone"} isPositive={!currentFrameData || currentFrameData.queueCount <= 2} badge={currentFrameData && currentFrameData.queueCount > 2 ? "Crowded" : "Normal"} icon={<Flame className="w-5 h-5 text-rose-500" />} />
               <KPICard title={isAr ? "زمن الفيديو" : "Video Timecode"} value={`${currentTime.toFixed(1)}s`} change="In Sync" isPositive={true} badge="Active" icon={<Activity className="w-5 h-5 text-indigo-600" />} />
             </section>
 
@@ -404,31 +413,24 @@ export default function Home() {
                   </h2>
                   <label className="cursor-pointer flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-sm">
                     <Upload size={14} />
-                    <span>{isAr ? "رفع فيديو MP4" : "Upload Custom MP4"}</span>
-                    <input type="file" accept="video/mp4,video/m4v" onChange={handleVideoUpload} className="hidden" />
+                    <span>{isAr ? "رفع نتيجة تحليل" : "Upload Analysis"}</span>
+                    <input type="file" multiple accept="video/mp4,video/m4v,video/quicktime,application/json,.json" onChange={handleVideoUpload} className="hidden" />
                   </label>
                 </div>
 
                 <div className="relative w-full h-80 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center shadow-inner group">
                   {videoSrc ? (
-                    <video ref={videoRef} src={videoSrc} autoPlay loop muted playsInline onTimeUpdate={handleTimeUpdate} className="w-full h-full object-cover" />
+                    <video ref={videoRef} src={videoSrc} autoPlay loop muted playsInline onTimeUpdate={handleTimeUpdate} className="w-full h-full object-contain" />
                   ) : (
                     <div className="text-center space-y-2 z-10 p-6">
                       <Video size={32} className="mx-auto text-blue-400" />
-                      <p className="text-xs font-mono font-bold text-slate-300">{isAr ? "قم برفع فيديو MP4 لرؤية التتبع المباشر" : "Upload an MP4 video to test live dynamic tracking"}</p>
+                      <p className="text-xs font-mono font-bold text-slate-300">{uploadError ?? (isAr ? "ارفعي الفيديو المحلَّل وملف النتائج معاً" : "Upload the annotated video and its analysis JSON")}</p>
                     </div>
                   )}
 
-                  <div className="absolute inset-0 pointer-events-none z-20">
-                    <AnimatePresence>
-                      {currentFrameData.boxes.map((box) => (
-                        <motion.div key={box.id} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1, left: box.x, top: box.y }} exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.5 }} style={{ position: "absolute" }} className={`w-28 h-36 border-2 rounded-2xl p-2 flex flex-col justify-between backdrop-blur-[2px] ${box.type === "green" ? "border-emerald-400 bg-emerald-500/15" : box.type === "blue" ? "border-blue-500 bg-blue-500/15" : "border-amber-400 bg-amber-500/15"}`}>
-                          <div className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md w-max shadow ${box.type === "green" ? "bg-emerald-500 text-slate-950" : "bg-blue-600 text-white"}`}>{box.label}</div>
-                          <div className="bg-slate-950/85 text-slate-200 text-[9px] font-mono p-1 rounded">Dwell: {box.dwell}</div>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
+                  {uploadError && videoSrc && (
+                    <div className="absolute top-3 inset-x-3 z-30 bg-rose-600/90 text-white text-xs font-bold p-2 rounded-xl">{uploadError}</div>
+                  )}
 
                   {videoSrc && (
                     <button onClick={togglePlay} className="absolute bottom-4 right-4 z-30 p-2.5 rounded-xl bg-slate-900/80 text-white border border-slate-700">
@@ -446,7 +448,7 @@ export default function Home() {
                   </div>
                   <div className="p-4 bg-blue-50/70 rounded-2xl border border-blue-200/80 space-y-2">
                     <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-md">{currentTime.toFixed(1)}s</span>
-                    <p className="text-xs font-semibold text-slate-800 leading-relaxed">{currentFrameData.insight}</p>
+                    <p className="text-xs font-semibold text-slate-800 leading-relaxed">{insightText}</p>
                   </div>
                 </div>
                 <button className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm">{isAr ? "تطبيق الإجراء" : "Apply Action"}</button>
