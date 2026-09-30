@@ -186,7 +186,20 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
       y: Math.min(1, Math.max(0, (e.clientY - b.top - r.oy) / r.dh)),
     };
   };
+  // pause while drawing so the zone can be placed calmly, resume afterwards
+  const resumeAfterEdit = useRef(false);
+  const startEdit = (mode: EditMode) => {
+    if (mode === "none" || editMode === mode) {
+      setEditMode("none");
+      if (resumeAfterEdit.current) { videoRef.current?.play(); resumeAfterEdit.current = false; }
+      return;
+    }
+    const v = videoRef.current;
+    if (v && !v.paused) { v.pause(); resumeAfterEdit.current = true; }
+    setEditMode(mode);
+  };
   const onDown = (e: React.PointerEvent) => {
+    e.preventDefault();
     if (editMode === "none") return;
     const p = toNorm(e); if (!p) return;
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -198,7 +211,10 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
     setDragRect({ x1: Math.min(dragStart.x, p.x), y1: Math.min(dragStart.y, p.y), x2: Math.max(dragStart.x, p.x), y2: Math.max(dragStart.y, p.y) });
   };
   const onUp = () => {
-    if (dragRect && dragRect.x2 - dragRect.x1 > 0.03 && dragRect.y2 - dragRect.y1 > 0.03) {
+    if (!dragStart) return;
+    const ok = !!dragRect && dragRect.x2 - dragRect.x1 > 0.03 && dragRect.y2 - dragRect.y1 > 0.03;
+    if (!ok) { setDragStart(null); setDragRect(null); return; }   // a click, not a drag: stay in drawing mode
+    if (dragRect) {
       if (editMode === "queue") {
         // the first drawn lane replaces the default zone, the next ones are added
         setQueueZones((zs) => (queueCustom ? [...zs, dragRect] : [dragRect]));
@@ -207,6 +223,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
       resetAnalysis();
     }
     setDragStart(null); setDragRect(null); setEditMode("none");
+    if (resumeAfterEdit.current) { videoRef.current?.play(); resumeAfterEdit.current = false; }
   };
 
   const downloadResults = () => {
@@ -272,17 +289,18 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
           </div>
         )}
         <canvas ref={canvasRef}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+          style={{ touchAction: editMode !== "none" ? "none" : "auto" }}
           className={`absolute inset-0 w-full h-full ${editMode !== "none" ? "cursor-crosshair z-30" : "pointer-events-none z-20"}`} />
         {videoSrc && staffZones.length === 0 && editMode === "none" && (
-          <button onClick={() => setEditMode("staff")}
+          <button onClick={() => startEdit("staff")}
             className="absolute top-3 left-3 z-30 bg-amber-500/95 hover:bg-amber-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow">
             {t("الكاشير يُحسب عميلاً؟ حدّدي منطقة الموظفين", "Cashier counted as a customer? Set the staff zone")}
           </button>
         )}
         {editMode !== "none" && (
           <div className="absolute top-3 inset-x-3 z-40 bg-slate-900/90 text-white text-xs font-bold p-2 rounded-xl text-center pointer-events-none">
-            {editMode === "queue" ? t("اسحبي مستطيلاً فوق مكان وقوف الطابور", "Drag a rectangle over where the queue stands")
+            {editMode === "queue" ? t("الفيديو متوقف مؤقتاً: اضغطي واسحبي مستطيلاً فوق مكان وقوف العملاء، ثم اتركي", "Video paused: press and drag a rectangle over where customers queue, then release")
               : t("اسحبي مستطيلاً يغطي الكاشير خلف الكاونتر (من رأسه إلى الكاونتر)", "Drag a rectangle covering the cashier behind the counter")}
           </div>
         )}
@@ -299,11 +317,11 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <button onClick={() => setEditMode(editMode === "queue" ? "none" : "queue")} disabled={!videoSrc}
+        <button onClick={() => startEdit("queue")} disabled={!videoSrc}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold border transition disabled:opacity-40 ${editMode === "queue" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-200 hover:bg-blue-50"}`}>
           <Square size={13} />{queueCustom ? t("+ منطقة طابور أخرى", "+ Another queue zone") : t("تحديد منطقة الطابور", "Set queue zone")}
         </button>
-        <button onClick={() => setEditMode(editMode === "staff" ? "none" : "staff")} disabled={!videoSrc}
+        <button onClick={() => startEdit("staff")} disabled={!videoSrc}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold border transition disabled:opacity-40 ${editMode === "staff" ? "bg-slate-600 text-white border-slate-600" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}>
           <Square size={13} />{staffZones.length ? t("+ كاشير آخر", "+ Another cashier") : t("منطقة الموظفين (اختياري)", "Staff zone (optional)")}
         </button>
@@ -311,6 +329,11 @@ export default function LiveVisionPanel({ isAr, settings, onStats }: Props) {
           className={`px-3 py-2 rounded-xl font-bold border transition disabled:opacity-40 ${slow ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}>
           {t("تشغيل بطيء 0.5x", "Slow 0.5x")}
         </button>
+        {videoSrc && (
+          <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 font-bold">
+            {t(`طوابير: ${queueZones.length} · كاشير: ${staffZones.length}`, `Queues: ${queueZones.length} · Cashiers: ${staffZones.length}`)}
+          </span>
+        )}
         {(queueCustom || staffZones.length > 0) && (
           <button onClick={() => { setQueueZones([DEFAULT_QUEUE]); setQueueCustom(false); setStaffZones([]); resetAnalysis(); }} className="px-2 py-2 text-slate-500 hover:text-slate-800 font-bold">
             {t("مسح المناطق", "Clear zones")}
