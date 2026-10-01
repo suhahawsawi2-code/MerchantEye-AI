@@ -9,7 +9,7 @@ import {
   Layers, ArrowRight, Check, HelpCircle, Users, 
   ChevronDown, Languages, Play, BarChart2, CheckCircle2,
   Building2, Lock, Flame, Upload, Pause, LayoutDashboard, PieChart,
-  FileText, GitCompare, Settings, LogOut, Video, Scan, Activity, Download,
+  FileText, LogOut, Video, Scan, Activity, Download,
   FileSpreadsheet, FileCode, Calendar, BarChart as BarChartIcon, Mail,
   MapPin, UserCheck, Zap, AlertCircle
 } from "lucide-react";
@@ -264,8 +264,6 @@ export default function Home() {
             <NavItem icon={<LayoutDashboard size={18} />} label={isAr ? "اللوحة الرئيسية" : "Dashboard"} active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
             <NavItem icon={<PieChart size={18} />} label={isAr ? "التحليلات التفصيلية" : "Analytics"} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
             <NavItem icon={<FileText size={18} />} label={isAr ? "التقارير والتنزيل" : "Reports & Exports"} active={activeTab === "reports"} onClick={() => setActiveTab("reports")} />
-            <NavItem icon={<GitCompare size={18} />} label={isAr ? "مقارنة الفروع" : "Branches"} active={activeTab === "branches"} onClick={() => setActiveTab("branches")} />
-            <NavItem icon={<Settings size={18} />} label={isAr ? "الإعدادات" : "Settings"} active={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
           </nav>
         </div>
 
