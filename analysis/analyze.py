@@ -59,10 +59,13 @@ def to_pixels(zone: np.ndarray, w: int, h: int) -> np.ndarray:
     return (zone * np.array([w, h], dtype=np.float32)).astype(np.int32)
 
 
-def inside(zone_px: np.ndarray | None, x: float, y: float) -> bool:
-    if zone_px is None:
+def inside(zones, x: float, y: float) -> bool:
+    """True if (x, y) is inside any of the given pixel polygons."""
+    if zones is None:
         return False
-    return cv2.pointPolygonTest(zone_px, (float(x), float(y)), False) >= 0
+    if isinstance(zones, np.ndarray):
+        zones = [zones]
+    return any(cv2.pointPolygonTest(z, (float(x), float(y)), False) >= 0 for z in zones)
 
 
 def fmt_mmss(seconds: float) -> str:
@@ -80,13 +83,15 @@ class Track:
     queue_enter: float | None = None      # time the person entered the queue zone (current visit)
     queue_last_in: float | None = None    # last time seen inside the queue zone
     staff_frames: int = 0
+    in_staff_now: bool = False
     frames: int = 0
     completed_waits: list[float] = field(default_factory=list)
 
     @property
     def is_staff(self) -> bool:
         # Staff = spends most of its visible time inside the staff zone
-        return self.frames >= 5 and self.staff_frames / self.frames > 0.6
+        # in the staff zone right now, or most of the time so far
+        return self.in_staff_now or (self.frames >= 3 and self.staff_frames / self.frames > 0.5)
 
     def current_wait(self, now: float) -> float:
         return 0.0 if self.queue_enter is None else now - self.queue_enter
@@ -135,6 +140,10 @@ COL_ZONE_S = (180, 180, 180)
 
 def draw_zone(img, zone_px, color, label):
     if zone_px is None:
+        return
+    if isinstance(zone_px, list):
+        for z in zone_px:
+            draw_zone(img, z, color, label)
         return
     overlay = img.copy()
     cv2.fillPoly(overlay, [zone_px], color)
@@ -200,9 +209,8 @@ def analyze(args):
     H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
 
-    q_zone = to_pixels(parse_zone(args.queue_zone), W, H)
-    s_zone_n = parse_zone(args.staff_zone)
-    s_zone = to_pixels(s_zone_n, W, H) if s_zone_n is not None else None
+    q_zone = [to_pixels(parse_zone(z), W, H) for z in args.queue_zone]
+    s_zone = [to_pixels(parse_zone(z), W, H) for z in (args.staff_zone or [])] or None
 
     if args.preview_zones:
         ok, frame = cap.read()
@@ -260,9 +268,13 @@ def analyze(args):
                 tr.last_seen = now
                 tr.frames += 1
                 fx, fy = (xyxy[0] + xyxy[2]) / 2, xyxy[3]      # "feet" point = bottom-centre of the box
-                if inside(s_zone, fx, fy):
+                cy = (xyxy[1] + xyxy[3]) / 2           # behind a counter the feet are hidden: test body centre too
+                tr.in_staff_now = inside(s_zone, fx, fy) or inside(s_zone, fx, cy)
+                if tr.in_staff_now:
                     tr.staff_frames += 1
                 in_q = inside(q_zone, fx, fy) and not tr.is_staff
+                if tr.is_staff and tr.queue_enter is not None:
+                    tr.queue_enter = None
                 if in_q:
                     if tr.queue_enter is None:
                         tr.queue_enter = now
@@ -414,9 +426,10 @@ def main():
     p.add_argument("--out-dir", default=os.path.join(here, "output"))
     p.add_argument("--model", default="yolov8n.pt", help="yolov8n.pt (fast) or yolov8s.pt (more accurate)")
     p.add_argument("--tracker", default="bytetrack.yaml")
-    p.add_argument("--queue-zone", default="0.25,0.35 0.75,0.35 0.75,1.0 0.25,1.0",
-                   help="queue area polygon, normalized 'x,y x,y ...'")
-    p.add_argument("--staff-zone", default=None, help="area behind the counter (optional)")
+    p.add_argument("--queue-zone", action="append", default=None,
+                   help="queue area polygon, normalized 'x,y x,y ...' (repeat for several lanes)")
+    p.add_argument("--staff-zone", action="append", default=None,
+                   help="area where the cashier stands (optional, repeat for several cashiers)")
     p.add_argument("--conf", type=float, default=0.35, help="detection confidence threshold")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--stride", type=int, default=1, help="analyze every Nth frame (2-3 = faster)")
@@ -426,7 +439,10 @@ def main():
     p.add_argument("--min-wait", type=float, default=2.0, help="ignore queue visits shorter than this (passers-by)")
     p.add_argument("--min-frames", type=int, default=5, help="ignore tracks shorter than this (noise)")
     p.add_argument("--preview-zones", action="store_true", help="only draw the zones on the first frame")
-    analyze(p.parse_args())
+    a = p.parse_args()
+    if not a.queue_zone:
+        a.queue_zone = ["0.25,0.35 0.75,0.35 0.75,1.0 0.25,1.0"]
+    analyze(a)
 
 
 if __name__ == "__main__":

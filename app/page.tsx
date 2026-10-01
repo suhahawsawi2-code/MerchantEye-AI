@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useCallback } from "react";
+import LiveVisionPanel from "./components/LiveVisionPanel";
+import type { FrameStats, EngineSettings } from "./lib/visionEngine";
 import { motion } from "framer-motion";
 import { 
   Sparkles, Camera, TrendingUp, Clock, ShieldCheck, 
@@ -13,32 +15,8 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 
-// نتائج التحليل الحقيقية تأتي من سكربت analysis/analyze.py (YOLOv8 + ByteTrack)
-// الملفات الافتراضية: public/demo/analysis.json و public/demo/annotated.mp4
-type TimelineEntry = {
-  startTime: number;
-  endTime: number;
-  visitorsNow: number;
-  queueCount: number;
-  staffCount: number;
-  avgWaitSec: number;
-  maxWaitSec: number;
-  cxScore: number;
-  level: "ok" | "warning" | "alert";
-  insightAr: string;
-  insightEn: string;
-};
-type AnalysisSummary = {
-  video: string;
-  durationSec: number;
-  model: string;
-  processingFps: number | null;
-  uniqueCustomers: number;
-  peakQueue: number;
-  avgWaitSec: number;
-  maxWaitSec: number;
-};
-type Analysis = { summary: AnalysisSummary; timeline: TimelineEntry[] };
+// التحليل يتم مباشرة داخل المتصفح: YOLOv8 (ONNX) + تتبّع + منطقة الطابور — انظري app/lib/visionEngine.ts
+const ENGINE_SETTINGS: EngineSettings = { conf: 0.35, waitThresholdSec: 180, queueLimit: 4 };
 
 const formatWait = (sec: number) => {
   const s = Math.round(sec);
@@ -67,67 +45,10 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<"landing" | "login" | "dashboard">("landing");
   const [lang, setLang] = useState<"ar" | "en">("ar");
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [currentTime, setCurrentTime] = useState<number>(0);
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
-
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [stats, setStats] = useState<FrameStats | null>(null);
+  const onStats = useCallback((s: FrameStats | null) => setStats(s), []);
   const isAr = lang === "ar";
-
-  // تحميل نتيجة التحليل التجريبية (إن وُجدت) من مجلد public/demo
-  useEffect(() => {
-    fetch("/demo/analysis.json")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: Analysis | null) => {
-        if (data?.timeline?.length) {
-          setAnalysis(data);
-          setVideoSrc("/demo/annotated.mp4");
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // ارفعي الملفين معاً: الفيديو المحلَّل (_annotated.mp4) وملف النتائج (_analysis.json)
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    const video = files.find((f) => f.type.startsWith("video/") || /\.(mp4|m4v|mov)$/i.test(f.name));
-    const json = files.find((f) => f.name.toLowerCase().endsWith(".json"));
-    if (!video || !json) {
-      setUploadError(isAr
-        ? "اختاري ملفين معاً: الفيديو المحلَّل (annotated.mp4) وملف النتائج (analysis.json) الناتجين من سكربت التحليل."
-        : "Select both files together: the annotated video and the analysis JSON produced by the analysis script.");
-      return;
-    }
-    try {
-      const data = JSON.parse(await json.text()) as Analysis;
-      if (!data.timeline?.length) throw new Error("empty");
-      setAnalysis(data);
-      setVideoSrc(URL.createObjectURL(video));
-      setUploadError(null);
-      setIsPlaying(true);
-      setCurrentTime(0);
-    } catch {
-      setUploadError(isAr ? "ملف النتائج غير صالح." : "Invalid analysis file.");
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
-
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) videoRef.current.pause();
-      else videoRef.current.play();
-      setIsPlaying(!isPlaying);
-    }
-  };
 
   const handleDownload = (format: string) => {
     setDownloadingFormat(format);
@@ -137,13 +58,11 @@ export default function Home() {
     }, 1200);
   };
 
-  const currentFrameData: TimelineEntry | null = analysis
-    ? analysis.timeline.find((item) => currentTime >= item.startTime && currentTime < item.endTime)
-      ?? analysis.timeline[analysis.timeline.length - 1]
-    : null;
-  const insightText = currentFrameData
-    ? (isAr ? currentFrameData.insightAr : currentFrameData.insightEn)
-    : (isAr ? "لا توجد نتائج تحليل بعد. شغّلي سكربت التحليل على فيديو ثم ارفعي الملفين الناتجين." : "No analysis yet. Run the analysis script on a video, then upload both output files.");
+  const currentFrameData = stats;
+  const insightText = stats
+    ? (isAr ? stats.insightAr : stats.insightEn)
+    : (isAr ? "ارفعي فيديو أو شغّلي الفيديو التجريبي، وستظهر التوصيات هنا لحظياً." : "Upload a video or play the sample — live recommendations will appear here.");
+  const currentTime = stats?.t ?? 0;
 
   // 1️⃣ VIEW: LANDING PAGE
   if (currentView === "landing") {
@@ -401,44 +320,11 @@ export default function Home() {
               <KPICard title={isAr ? "متوسط وقت الانتظار" : "Avg Waiting Time"} value={currentFrameData ? formatWait(currentFrameData.avgWaitSec) : "—"} change={isAr ? "من التتبع" : "From tracking"} isPositive={!currentFrameData || currentFrameData.level !== "alert"} badge={currentFrameData?.level === "alert" ? "Alert" : "Normal"} icon={<Clock className="w-5 h-5 text-amber-500" />} />
               <KPICard title={isAr ? "العملاء الآن" : "Live Customers"} value={currentFrameData ? `${currentFrameData.visitorsNow} ${isAr ? "أشخاص" : "People"}` : "—"} change="YOLOv8" isPositive={true} badge="Detected" icon={<Users className="w-5 h-5 text-teal-600" />} />
               <KPICard title={isAr ? "طابور الانتظار" : "Queue Count"} value={currentFrameData ? `${currentFrameData.queueCount} ${isAr ? "منتظرين" : "Waiting"}` : "—"} change={isAr ? "منطقة الطابور" : "Queue zone"} isPositive={!currentFrameData || currentFrameData.queueCount <= 2} badge={currentFrameData && currentFrameData.queueCount > 2 ? "Crowded" : "Normal"} icon={<Flame className="w-5 h-5 text-rose-500" />} />
-              <KPICard title={isAr ? "زمن الفيديو" : "Video Timecode"} value={`${currentTime.toFixed(1)}s`} change="In Sync" isPositive={true} badge="Active" icon={<Activity className="w-5 h-5 text-indigo-600" />} />
+              <KPICard title={isAr ? "زمن الفيديو" : "Video Timecode"} value={`${currentTime.toFixed(1)}s`} change={stats ? `${Math.round(stats.inferenceMs)} ms/frame` : "—"} isPositive={true} badge="Live" icon={<Activity className="w-5 h-5 text-indigo-600" />} />
             </section>
 
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                  <h2 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                    <Scan size={18} className="text-blue-600 animate-pulse" />
-                    {isAr ? "شاشة التحليل الحركي المباشر" : "Dynamic AI Vision Feed"}
-                  </h2>
-                  <label className="cursor-pointer flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-sm">
-                    <Upload size={14} />
-                    <span>{isAr ? "رفع نتيجة تحليل" : "Upload Analysis"}</span>
-                    <input type="file" multiple accept="video/mp4,video/m4v,video/quicktime,application/json,.json" onChange={handleVideoUpload} className="hidden" />
-                  </label>
-                </div>
-
-                <div className="relative w-full h-80 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center shadow-inner group">
-                  {videoSrc ? (
-                    <video ref={videoRef} src={videoSrc} autoPlay loop muted playsInline onTimeUpdate={handleTimeUpdate} className="w-full h-full object-contain" />
-                  ) : (
-                    <div className="text-center space-y-2 z-10 p-6">
-                      <Video size={32} className="mx-auto text-blue-400" />
-                      <p className="text-xs font-mono font-bold text-slate-300">{uploadError ?? (isAr ? "ارفعي الفيديو المحلَّل وملف النتائج معاً" : "Upload the annotated video and its analysis JSON")}</p>
-                    </div>
-                  )}
-
-                  {uploadError && videoSrc && (
-                    <div className="absolute top-3 inset-x-3 z-30 bg-rose-600/90 text-white text-xs font-bold p-2 rounded-xl">{uploadError}</div>
-                  )}
-
-                  {videoSrc && (
-                    <button onClick={togglePlay} className="absolute bottom-4 right-4 z-30 p-2.5 rounded-xl bg-slate-900/80 text-white border border-slate-700">
-                      {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-                    </button>
-                  )}
-                </div>
-              </div>
+              <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} />
 
               <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
                 <div className="space-y-4">
