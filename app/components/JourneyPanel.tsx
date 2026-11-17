@@ -7,11 +7,17 @@ import { Route, Bell, Sparkles, Play, Pause, RotateCcw, FileUp, Settings2, Flame
 import {
   AlertMonitor, DEFAULT_JOURNEY_SETTINGS, cxIndex, SHORT_VIDEO_SETTINGS, STAGE_LABEL, arrivalsInWindow, clockLabel, leftQueue, leftUnserved, mmss,
   parseInvoicesCsv, parseResults, serviceStatus, stageOf, summarize, summaryText,
-  type AlertEvent, type Invoice, type Journey, type JourneySettings,
+  type AlertEvent, type Invoice, type Journey, type JourneySettings, type PeakSpan,
 } from "../lib/journey";
 import { SIM_DAY_END, SIM_DAY_START, simulateDay, viewAt } from "../lib/cafeSimulation";
 
 export type VideoJourneyFeed = { journeys: Journey[]; now: number; ended: boolean; runId: number; label: string };
+
+/** What the analytics page needs: the journeys of whatever is active on the board (video, results file or simulation). */
+export type ActiveJourneyData = {
+  journeys: Journey[]; now: number; ended: boolean; mode: "video" | "day"; peaks: PeakSpan[];
+  source: "video" | "file" | "sim"; label: string; key: string;
+};
 
 type Props = {
   isAr: boolean;
@@ -19,6 +25,7 @@ type Props = {
   settings: JourneySettings;
   onSettings: (s: JourneySettings) => void;
   onInvoices: (inv: Invoice[]) => void;
+  onActive?: (d: ActiveJourneyData | null) => void;
 };
 
 type Source = "video" | "file" | "sim";
@@ -26,7 +33,7 @@ type Source = "video" | "file" | "sim";
 const LEVEL_COLOR = { ok: "bg-emerald-500", near: "bg-amber-500", late: "bg-rose-500" } as const;
 const LEVEL_TEXT = { ok: "text-emerald-700", near: "text-amber-700", late: "text-rose-700" } as const;
 
-export default function JourneyPanel({ isAr, video, settings, onSettings, onInvoices }: Props) {
+export default function JourneyPanel({ isAr, video, settings, onSettings, onInvoices, onActive }: Props) {
   const t = (ar: string, en: string) => (isAr ? ar : en);
   const [source, setSource] = useState<Source>("video");
 
@@ -88,7 +95,13 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
     const open = m.peaks.length > 0 && m.peaks[m.peaks.length - 1].end === null;
     setInPeak(open);
     setAlerts((a) => (fresh ? evs.reverse() : evs.length ? [...evs.reverse(), ...a] : a).slice(0, 60));
-  }, [feed, settings, mode, source]);
+    onActive?.({
+      journeys: feed.journeys, now: feed.now, ended: feed.ended, mode, source, key: feed.key,
+      peaks: m.peaks.map((p) => ({ ...p })),
+      label: source === "sim" ? "sim" : source === "file" ? (file?.name ?? "") : (video?.label ?? ""),
+    });
+  }, [feed, settings, mode, source, onActive, file, video]);
+  useEffect(() => { if (!feed) onActive?.(null); }, [feed, onActive]);
 
   // --- numbers
   const journeys = feed?.journeys ?? [];

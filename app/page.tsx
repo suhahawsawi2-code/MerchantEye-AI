@@ -2,11 +2,12 @@
 
 import React, { useState, useCallback } from "react";
 import LiveVisionPanel from "./components/LiveVisionPanel";
-import JourneyPanel, { type VideoJourneyFeed } from "./components/JourneyPanel";
+import JourneyPanel, { type ActiveJourneyData, type VideoJourneyFeed } from "./components/JourneyPanel";
+import AnalyticsView from "./components/AnalyticsView";
 import { DEFAULT_JOURNEY_SETTINGS, type Invoice, type JourneySettings } from "./lib/journey";
 import type { EngineSettings } from "./lib/visionEngine";
 import { motion } from "framer-motion";
-import { Sparkles, ArrowRight, Languages, Play, CheckCircle2, LayoutDashboard, LogOut } from "lucide-react";
+import { Sparkles, ArrowRight, Languages, Play, CheckCircle2, LayoutDashboard, LogOut, PieChart } from "lucide-react";
 
 // التحليل يتم مباشرة داخل المتصفح: YOLOv8 (ONNX) + تتبّع + منطقة الطابور — انظري app/lib/visionEngine.ts
 const ENGINE_SETTINGS: EngineSettings = { conf: 0.35, waitThresholdSec: 180, queueLimit: 4 };
@@ -23,6 +24,7 @@ export default function Home() {
   const onJourneys = useCallback((f: VideoJourneyFeed | null) => setJourneyFeed(f), []);
   const [journeySettings, setJourneySettings] = useState<JourneySettings>(DEFAULT_JOURNEY_SETTINGS);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [activeData, setActiveData] = useState<ActiveJourneyData | null>(null);
   const isAr = lang === "ar";
 
 
@@ -224,6 +226,7 @@ export default function Home() {
 
           <nav className="space-y-1.5">
             <NavItem icon={<LayoutDashboard size={18} />} label={isAr ? "اللوحة الرئيسية" : "Dashboard"} active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
+            <NavItem icon={<PieChart size={18} />} label={isAr ? "التحليلات" : "Analytics"} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
           </nav>
         </div>
 
@@ -246,10 +249,12 @@ export default function Home() {
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-              {isAr ? "لوحة تجربة العملاء" : "Customer Experience Dashboard"}
+              {activeTab === "analytics" ? (isAr ? "التحليلات" : "Analytics") : (isAr ? "لوحة تجربة العملاء" : "Customer Experience Dashboard")}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              {isAr ? "رحلة كل عميل من دخوله إلى خروجه، ووقت خدمته" : "Every customer's journey from entry to exit, and their service time"}
+              {activeTab === "analytics"
+                ? (isAr ? "أرقام ورسوم من رحلات العملاء التي طلعت من تحليل الفيديو" : "Charts and numbers from the customer journeys found in the video")
+                : (isAr ? "رحلة كل عميل من دخوله إلى خروجه، ووقت خدمته" : "Every customer's journey from entry to exit, and their service time")}
             </p>
           </div>
 
@@ -264,13 +269,16 @@ export default function Home() {
           </div>
         </header>
 
-        {/* TAB 1: DASHBOARD */}
-        {activeTab === "dashboard" && (
-          <div className="space-y-8">
-            <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} onJourneys={onJourneys} invoices={invoices} />
+        {/* TAB 1: DASHBOARD — stays mounted while hidden so a running video or simulation keeps going */}
+        <div className={activeTab === "dashboard" ? "space-y-8" : "hidden"}>
+          <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} onJourneys={onJourneys} invoices={invoices} />
 
-            <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} />
-          </div>
+          <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} onActive={setActiveData} />
+        </div>
+
+        {/* TAB 2: ANALYTICS — built from the same journeys */}
+        {activeTab === "analytics" && (
+          <AnalyticsView isAr={isAr} data={activeData} settings={journeySettings} onGoToDashboard={() => setActiveTab("dashboard")} />
         )}
 
       </main>
