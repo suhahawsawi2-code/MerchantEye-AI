@@ -171,8 +171,7 @@ export class JourneyTracker {
   }
 
   /** End of the video: everyone still inside is closed at the last time they were seen. */
-  finish() {
-    const tEnd = Math.max(0, ...[...this.live.values()].map((L) => L.j.lastSeen));
+  finish(tEnd: number) {
     for (const [, L] of this.live) {
       if (L.j.tQueue !== null && L.j.tOrder === null && L.queueLastIn !== null && L.queueLastIn - L.j.tQueue < this.minQueue) L.j.tQueue = null;
       if (tEnd - L.j.lastSeen < 1) {   // still in the picture when the video ended: not an exit

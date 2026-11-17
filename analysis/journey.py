@@ -58,9 +58,17 @@ class RFDETRDetector(Detector):
     def __init__(self, size: str):
         try:
             import rfdetr
-            from rfdetr.util.coco_classes import COCO_CLASSES
         except ImportError:
             sys.exit("rfdetr is not installed. Run:  pip install rfdetr   (or use --model yolo)")
+        COCO_CLASSES = None
+        for mod in ("rfdetr.assets.coco_classes", "rfdetr.util.coco_classes"):   # moved between versions
+            try:
+                COCO_CLASSES = __import__(mod, fromlist=["COCO_CLASSES"]).COCO_CLASSES
+                break
+            except Exception:
+                continue
+        if COCO_CLASSES is None:
+            sys.exit("Could not find RF-DETR's COCO class names; update journey.py for this rfdetr version.")
         cls = {"nano": "RFDETRNano", "small": "RFDETRSmall", "medium": "RFDETRMedium"}[size]
         self.model = getattr(rfdetr, cls)()
         try:
@@ -326,8 +334,7 @@ class JourneyTracker:
         for tid in [k for k, v in self.by_track.items() if v not in self.live]:
             del self.by_track[tid]
 
-    def finish(self):
-        t_end = max([L.j.lastSeen for L in self.live.values()], default=0)
+    def finish(self, t_end: float):
         for L in self.live.values():
             j = L.j
             if j.tQueue is not None and j.tOrder is None and L.queue_last_in is not None and L.queue_last_in - j.tQueue < self.min_queue:
@@ -381,6 +388,23 @@ class JourneyTracker:
         return [j.__dict__.copy() for j in sorted(self.done + live, key=lambda j: j.id)]
 
 
+# ----------------------------------------------------------------------------- tracker
+
+def make_tracker(analyzed_fps: float, conf: float):
+    """ByteTrack: from the `trackers` package (current), or supervision's older built-in one."""
+    try:
+        from trackers import ByteTrackTracker
+        t = ByteTrackTracker(frame_rate=analyzed_fps, lost_track_buffer=max(5, int(2 * analyzed_fps)),
+                             track_activation_threshold=conf + 0.05, high_conf_det_threshold=conf + 0.05,
+                             minimum_consecutive_frames=1)
+        return lambda d: t.update(d)
+    except ImportError:
+        if hasattr(sv, "ByteTrack"):
+            t = sv.ByteTrack(frame_rate=max(1, int(round(analyzed_fps))))
+            return t.update_with_detections
+        sys.exit("ByteTrack not found. Run:  pip install trackers")
+
+
 # ----------------------------------------------------------------------------- main
 
 def main():
@@ -417,7 +441,7 @@ def main():
         det: Detector = RFDETRDetector(args.size)
     else:
         det = YOLODetector("yolov8n.pt" if args.model == "yolo" else args.model)
-    tracker = sv.ByteTrack(frame_rate=max(1, int(round(fps / step))))
+    tracker = make_tracker(fps / step, args.conf)
     jt = JourneyTracker()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -453,8 +477,8 @@ def main():
                 print(f"Auto-detected {len(zones['tables'])} table zones")
 
         dets = sv.Detections(xyxy=people[:, :4], confidence=people[:, 4], class_id=np.zeros(len(people), dtype=int))
-        tracked = tracker.update_with_detections(dets)
-        ppl = [(int(tid), box) for tid, box in zip(tracked.tracker_id, tracked.xyxy)]
+        tracked = tracker(dets)
+        ppl = [(int(tid), box) for tid, box in zip(tracked.tracker_id, tracked.xyxy) if tid is not None and tid >= 0]
         jt.update(ppl, items, t, W, H, zones)
 
         if writer is not None:
@@ -472,7 +496,8 @@ def main():
         if analyzed % 50 == 0:
             print(f"  {t:7.1f}s  journeys so far: {len(jt.journeys())}")
 
-    jt.finish()
+    last_t = idx / fps if idx >= 0 else 0.0
+    jt.finish(last_t)
     if writer is not None:
         writer.release()
     duration = (idx + 1) / fps

@@ -363,7 +363,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
       <div ref={wrapRef} className="relative w-full h-80 sm:h-96 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
         {videoSrc ? (
           <video ref={videoRef} src={videoSrc} autoPlay muted playsInline
-            onEnded={() => { journeyRef.current.finish(); emitJourneys(videoRef.current?.duration ?? lastTRef.current, true); }}
+            onEnded={() => { const end = videoRef.current?.duration ?? lastTRef.current; journeyRef.current.finish(end); emitJourneys(end, true); }}
             onLoadedMetadata={(e) => { e.currentTarget.playbackRate = slow ? 0.5 : 1; }}
             onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)}
             className="w-full h-full object-contain" />
