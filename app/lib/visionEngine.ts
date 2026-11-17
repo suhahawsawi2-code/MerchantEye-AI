@@ -109,11 +109,17 @@ export function loadModel(onProgress?: (pct: number) => void): Promise<any> {
 
 const prepCanvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
 
-export async function detectPeople(video: HTMLVideoElement, confThr: number): Promise<{ dets: Detection[]; ms: number }> {
+/** COCO classes the café features use besides people. */
+const ITEM_CLASSES = [40, 41, 45, 48, 54, 55]; // wine glass, cup, bowl, sandwich, donut, cake  -> "served item"
+const TABLE_CLASS = 60;                          // dining table
+
+export type SceneObjects = { items: Detection[]; tables: Detection[] };
+
+export async function detectPeople(video: HTMLVideoElement, confThr: number): Promise<{ dets: Detection[]; ms: number; objects: SceneObjects }> {
   const session = await loadModel();
   const ort = (window as any).ort;
   const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh || !prepCanvas) return { dets: [], ms: 0 };
+  if (!vw || !vh || !prepCanvas) return { dets: [], ms: 0, objects: { items: [], tables: [] } };
 
   // letterbox into INPUT x INPUT
   const scale = Math.min(INPUT / vw, INPUT / vh);
@@ -140,23 +146,31 @@ export async function detectPeople(video: HTMLVideoElement, confThr: number): Pr
   const data = out.output0.data as Float32Array; // [1, 84, N]
   const N = NUM_ANCHORS;
 
-  const raw: Detection[] = [];
-  for (let i = 0; i < N; i++) {
-    const score = data[4 * N + i]; // class 0 = person
-    if (score < confThr) continue;
+  const box = (i: number, conf: number): Detection => {
     const cx = data[i], cy = data[N + i], w = data[2 * N + i], h = data[3 * N + i];
-    raw.push({
+    return {
       x1: Math.max(0, (cx - w / 2 - padX) / scale),
       y1: Math.max(0, (cy - h / 2 - padY) / scale),
       x2: Math.min(vw, (cx + w / 2 - padX) / scale),
       y2: Math.min(vh, (cy + h / 2 - padY) / scale),
-      conf: score,
-    });
+      conf,
+    };
+  };
+  const raw: Detection[] = [], items: Detection[] = [], tables: Detection[] = [];
+  const objThr = Math.max(0.25, confThr - 0.05);
+  for (let i = 0; i < N; i++) {
+    const score = data[4 * N + i]; // class 0 = person
+    if (score >= confThr) raw.push(box(i, score));
+    let best = 0;
+    for (const c of ITEM_CLASSES) best = Math.max(best, data[(4 + c) * N + i]);
+    if (best >= objThr) items.push(box(i, best));
+    const tb = data[(4 + TABLE_CLASS) * N + i];
+    if (tb >= objThr) tables.push(box(i, tb));
   }
-  return { dets: nms(raw, 0.5), ms };
+  return { dets: nms(raw, 0.5), ms, objects: { items: nms(items, 0.5), tables: nms(tables, 0.5) } };
 }
 
-function iou(a: Detection, b: Detection) {
+export function iou(a: Detection, b: Detection) {
   const ix = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1));
   const iy = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
   const inter = ix * iy;

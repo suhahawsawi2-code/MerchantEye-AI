@@ -2,6 +2,8 @@
 
 import React, { useState, useCallback } from "react";
 import LiveVisionPanel from "./components/LiveVisionPanel";
+import JourneyPanel, { type VideoJourneyFeed } from "./components/JourneyPanel";
+import { DEFAULT_JOURNEY_SETTINGS, type Invoice, type JourneySettings } from "./lib/journey";
 import type { FrameStats, EngineSettings } from "./lib/visionEngine";
 import { motion } from "framer-motion";
 import { 
@@ -48,6 +50,10 @@ export default function Home() {
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
   const [stats, setStats] = useState<FrameStats | null>(null);
   const onStats = useCallback((s: FrameStats | null) => setStats(s), []);
+  const [journeyFeed, setJourneyFeed] = useState<VideoJourneyFeed | null>(null);
+  const onJourneys = useCallback((f: VideoJourneyFeed | null) => setJourneyFeed(f), []);
+  const [journeySettings, setJourneySettings] = useState<JourneySettings>(DEFAULT_JOURNEY_SETTINGS);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const isAr = lang === "ar";
 
   const handleDownload = (format: string) => {
@@ -322,7 +328,7 @@ export default function Home() {
             </section>
 
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} />
+              <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} onJourneys={onJourneys} invoices={invoices} />
 
               <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
                 <div className="space-y-4">
@@ -338,6 +344,8 @@ export default function Home() {
                 <button className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm">{isAr ? "تطبيق الإجراء" : "Apply Action"}</button>
               </div>
             </section>
+
+            <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} />
           </div>
         )}
 
