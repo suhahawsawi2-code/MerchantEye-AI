@@ -4,10 +4,11 @@ import React, { useState, useCallback } from "react";
 import LiveVisionPanel from "./components/LiveVisionPanel";
 import JourneyPanel, { type ActiveJourneyData, type VideoJourneyFeed } from "./components/JourneyPanel";
 import AnalyticsView from "./components/AnalyticsView";
+import BranchesView, { BRANCHES } from "./components/BranchesView";
 import { DEFAULT_JOURNEY_SETTINGS, type Invoice, type JourneySettings } from "./lib/journey";
 import type { EngineSettings } from "./lib/visionEngine";
 import { motion } from "framer-motion";
-import { Sparkles, ArrowRight, Languages, Play, CheckCircle2, LayoutDashboard, LogOut, PieChart } from "lucide-react";
+import { Sparkles, ArrowRight, Languages, Play, CheckCircle2, LayoutDashboard, LogOut, PieChart, Store } from "lucide-react";
 
 // التحليل يتم مباشرة داخل المتصفح: YOLOv8 (ONNX) + تتبّع + منطقة الطابور — انظري app/lib/visionEngine.ts
 const ENGINE_SETTINGS: EngineSettings = { conf: 0.35, waitThresholdSec: 180, queueLimit: 4 };
@@ -19,6 +20,8 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<"landing" | "login" | "dashboard">("landing");
   const [lang, setLang] = useState<"ar" | "en">("ar");
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [branchId, setBranchId] = useState(BRANCHES[0].id);
+  const branch = BRANCHES.find((b) => b.id === branchId) ?? BRANCHES[0];
   const onStats = useCallback(() => {}, []);   // the per-frame queue numbers are no longer shown; the journey board replaces them
   const [journeyFeed, setJourneyFeed] = useState<VideoJourneyFeed | null>(null);
   const onJourneys = useCallback((f: VideoJourneyFeed | null) => setJourneyFeed(f), []);
@@ -226,6 +229,7 @@ export default function Home() {
 
           <nav className="space-y-1.5">
             <NavItem icon={<LayoutDashboard size={18} />} label={isAr ? "اللوحة الرئيسية" : "Dashboard"} active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
+            <NavItem icon={<Store size={18} />} label={isAr ? "الفروع" : "Branches"} active={activeTab === "branches"} onClick={() => setActiveTab("branches")} />
             <NavItem icon={<PieChart size={18} />} label={isAr ? "التحليلات" : "Analytics"} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
           </nav>
         </div>
@@ -233,11 +237,11 @@ export default function Home() {
         <div className="border-t border-slate-100 pt-4 px-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
-              RIY
+              {branch.code}
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-800">{isAr ? "فرع الرياض الرئيسي" : "Riyadh Main Branch"}</p>
-              <p className="text-[10px] text-slate-400">{isAr ? "متجر #104" : "Store #104"}</p>
+              <p className="text-xs font-bold text-slate-800">{isAr ? branch.ar : branch.en}</p>
+              <p className="text-[10px] text-slate-400">{isAr ? branch.cityAr : branch.cityEn}</p>
             </div>
           </div>
           <LogOut size={16} onClick={() => setCurrentView("landing")} className="text-slate-400 cursor-pointer hover:text-rose-600 transition" />
@@ -249,12 +253,14 @@ export default function Home() {
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-              {activeTab === "analytics" ? (isAr ? "التحليلات" : "Analytics") : (isAr ? "لوحة تجربة العملاء" : "Customer Experience Dashboard")}
+              {activeTab === "branches" ? (isAr ? "الفروع" : "Branches") : activeTab === "analytics" ? (isAr ? "التحليلات" : "Analytics") : (isAr ? "لوحة تجربة العملاء" : "Customer Experience Dashboard")}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              {activeTab === "analytics"
-                ? (isAr ? "أرقام ورسوم من رحلات العملاء التي طلعت من تحليل الفيديو" : "Charts and numbers from the customer journeys found in the video")
-                : (isAr ? "رحلة كل عميل من دخوله إلى خروجه، ووقت خدمته" : "Every customer's journey from entry to exit, and their service time")}
+              {activeTab === "branches"
+                ? (isAr ? "كل فروعك في مكان واحد: تجربة العملاء وحالة كل فرع الآن" : "All your branches in one place: customer experience and status of each")
+                : activeTab === "analytics"
+                ? (isAr ? `${branch.ar} · أرقام ورسوم من رحلات العملاء التي طلعت من تحليل الفيديو` : `${branch.en} · charts from the customer journeys found in the video`)
+                : (isAr ? `${branch.ar} · رحلة كل عميل من دخوله إلى خروجه، ووقت خدمته` : `${branch.en} · every customer's journey from entry to exit`)}
             </p>
           </div>
 
@@ -275,6 +281,12 @@ export default function Home() {
 
           <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} onActive={setActiveData} />
         </div>
+
+        {/* BRANCHES */}
+        {activeTab === "branches" && (
+          <BranchesView isAr={isAr} current={branchId} data={activeData} settings={journeySettings}
+            onOpen={(id) => { setBranchId(id); setActiveTab("dashboard"); }} />
+        )}
 
         {/* TAB 2: ANALYTICS — built from the same journeys */}
         {activeTab === "analytics" && (
