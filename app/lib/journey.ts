@@ -90,6 +90,31 @@ export function serviceStatus(j: Journey, now: number, s: JourneySettings) {
   return { elapsed, level, done: j.tServed !== null };
 }
 
+/**
+ * Customer-experience score of one customer, 0..100:
+ *   ordering speed 40 pts (full within the order limit, 0 at twice the limit)
+ * + service speed  60 pts (full within the service limit, 0 at twice the limit)
+ * Walking out of the queue or leaving unserved = 0. Time spent sitting after service costs nothing.
+ * Returns null while the outcome is still unknown (still waiting, or just walked through).
+ */
+export function customerScore(j: Journey, s: JourneySettings): { total: number; order: number; serve: number } | null {
+  if (leftQueue(j) || leftUnserved(j)) return { total: 0, order: 0, serve: 0 };
+  if (j.tServed === null) return null;
+  const part = (sec: number, limit: number, pts: number) =>
+    limit > 0 ? pts * Math.min(1, Math.max(0, 1 - Math.max(0, sec - limit) / limit)) : pts;
+  const order = part((j.tOrder ?? j.tServed) - j.tEnter, s.orderLimitSec, 40);
+  const serve = part(j.tServed - j.tEnter, s.serveLimitSec, 60);
+  return { total: Math.round(order + serve), order, serve };
+}
+
+/** The day's (or video's) customer-experience index = average customer score. */
+export function cxIndex(journeys: Journey[], s: JourneySettings) {
+  const scores = journeys.map((j) => customerScore(j, s)).filter((x): x is NonNullable<typeof x> => x !== null);
+  if (!scores.length) return null;
+  const avg = (f: (x: (typeof scores)[number]) => number) => scores.reduce((a, x) => a + f(x), 0) / scores.length;
+  return { score: Math.round(avg((x) => x.total)), order: Math.round(avg((x) => x.order)), serve: Math.round(avg((x) => x.serve)), n: scores.length };
+}
+
 /** A journey that left after ordering but was never seen being served. */
 export const leftUnserved = (j: Journey) => j.tExit !== null && j.tServed === null && j.tOrder !== null;
 /** A journey that left the queue before ordering. */
@@ -211,6 +236,7 @@ export class AlertMonitor {
 // ------------------------------------------------------------------ the analyst's summary
 
 export type DaySummary = {
+  cx: { score: number; order: number; serve: number; n: number } | null;
   total: number;
   targetPct: number;
   served: number;
@@ -251,6 +277,7 @@ export function summarize(journeys: Journey[], now: number, s: JourneySettings, 
   for (const [b, c] of counts) if (!busiest || c > busiest.count) busiest = { hourStart: b, count: c };
 
   return {
+    cx: cxIndex(seen, s),
     total: seen.length,
     targetPct: s.dailyTarget > 0 ? Math.round((100 * seen.length) / s.dailyTarget) : 0,
     served: served.length,
@@ -288,6 +315,16 @@ export function summaryText(d: DaySummary, s: JourneySettings, mode: "video" | "
   } else {
     ar.push(`رصدنا ${period} ${d.total} عميل.`);
     en.push(`${d.total} customers detected ${periodEn}.`);
+  }
+  if (d.cx) {
+    const weak = d.cx.serve / 60 < d.cx.order / 40 ? { ar: "سرعة الخدمة", en: "service speed" } : { ar: "سرعة الطلب", en: "ordering speed" };
+    if (d.cx.score >= 95) {
+      ar.push(`مؤشر تجربة العملاء ${d.cx.score} من 100.`);
+      en.push(`Customer experience index ${d.cx.score}/100.`);
+    } else {
+      ar.push(`مؤشر تجربة العملاء ${d.cx.score} من 100، وأكثر شيء نزّله ${weak.ar}.`);
+      en.push(`Customer experience index ${d.cx.score}/100; ${weak.en} pulled it down most.`);
+    }
   }
   if (d.served) {
     ar.push(`${d.onTimePct}٪ من اللي انخدموا كانت خدمتهم في الوقت، ومتوسط الوقت من الدخول للخدمة ${mmss(d.avgToServiceSec)}.`);

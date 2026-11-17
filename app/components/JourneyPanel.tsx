@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Route, Bell, Sparkles, Play, Pause, RotateCcw, FileUp, Settings2, Flame, Receipt, Clapperboard, Video } from "lucide-react";
 import {
-  AlertMonitor, DEFAULT_JOURNEY_SETTINGS, SHORT_VIDEO_SETTINGS, STAGE_LABEL, arrivalsInWindow, clockLabel, leftQueue, leftUnserved, mmss,
+  AlertMonitor, DEFAULT_JOURNEY_SETTINGS, cxIndex, SHORT_VIDEO_SETTINGS, STAGE_LABEL, arrivalsInWindow, clockLabel, leftQueue, leftUnserved, mmss,
   parseInvoicesCsv, parseResults, serviceStatus, stageOf, summarize, summaryText,
   type AlertEvent, type Invoice, type Journey, type JourneySettings,
 } from "../lib/journey";
@@ -100,6 +100,7 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
   const stays = served.filter((j) => j.tExit !== null);
   const avgStay = stays.length ? stays.reduce((a, j) => a + (j.tExit! - j.tServed!), 0) / stays.length : 0;
   const lost = journeys.filter((j) => leftUnserved(j) || leftQueue(j)).length;
+  const cx = cxIndex(journeys, settings);
 
   // --- analyst summary
   const [summaryState, setSummary] = useState<{ ar: string; en: string; at: number; key: string } | null>(null);
@@ -203,7 +204,10 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <Tile label={t("مؤشر تجربة العملاء", "Customer experience index")} value={cx ? `${cx.score} / 100` : "—"}
+          sub={cx ? t(`الطلب ${cx.order}/40 · الخدمة ${cx.serve}/60`, `Order ${cx.order}/40 · Service ${cx.serve}/60`) : t("يظهر بعد أول عميل ينخدم", "Shows after the first served customer")}
+          bar={cx ? cx.score / 100 : undefined} warn={!!cx && cx.score < 70} />
         <Tile label={source === "sim" ? t("العملاء / الهدف اليومي", "Customers / daily target") : t("العملاء", "Customers")}
           value={source === "sim" ? `${journeys.length} / ${settings.dailyTarget}` : `${journeys.length}`}
           bar={source === "sim" ? Math.min(1, journeys.length / Math.max(1, settings.dailyTarget)) : undefined} />
@@ -305,7 +309,7 @@ function Tile({ label, value, sub, bar, warn }: { label: string; value: string; 
   return (
     <div className="p-3 rounded-2xl border border-slate-200 bg-white space-y-1">
       <p className="text-[10px] font-bold text-slate-500">{label}</p>
-      <p className={`text-lg font-extrabold ${warn ? "text-rose-600" : "text-slate-900"}`}>{value}</p>
+      <p className={`text-lg font-extrabold ${warn ? "text-rose-600" : "text-slate-900"}`}><span dir="ltr">{value}</span></p>
       {sub && <p className="text-[10px] text-slate-400 font-semibold">{sub}</p>}
       {bar !== undefined && <div className="h-1.5 rounded bg-slate-100 overflow-hidden"><div className={`h-full ${bar >= 1 ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${bar * 100}%` }} /></div>}
     </div>
