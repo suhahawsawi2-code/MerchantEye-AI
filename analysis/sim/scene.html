@@ -292,11 +292,101 @@ function aim(bone, child, dir, w) {
 }
 
 let rngTint = 3; const rt = () => (rngTint = (rngTint * 48271) % 2147483647) / 2147483647;
+// ---- "suit" figures: flat, faceless people built from simple parts riding on the skeleton
+const SUIT = P.get('suit') !== '0';
+const FM = (c, r = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 });
+const SKIN = [0xe0ac85, 0xc98f68, 0xa8714e, 0xedc29f, 0x8a5a3c].map((c) => FM(c, 0.7));
+const HAIR = [0x2a1d16, 0x1a1412, 0x3b2a1f, 0x4a3a2c].map((c) => FM(c, 0.9));
+const SHIRT = [FM(0xf5f2ec, 0.8), FM(0xe9eef4, 0.8), FM(0xf3ead8, 0.8)];
+const CUST_SUITS = [0x23262a, 0x1c1c1e, 0x3a3d42, 0x4a4239, 0x5b5f66, 0x2e2a26, 0x6f6658, 0x343a36].map((c) => FM(c));
+const STAFF_SUIT = FM(0x1f4e9c), STAFF_TROUSER = FM(0x1a3f80);
+const SHOE = FM(0x1b1612, 0.5);
+const wp = (b) => b.getWorldPosition(new THREE.Vector3());
+function seg(parent, a, b, r1, r2, mat, extend = 0) {
+  // capsule-ish cylinder from world point a to b, attached to bone `parent` keeping its world pose
+  const d = b.clone().sub(a); const len = d.length() * (1 + extend);
+  const g = new THREE.CylinderGeometry(r2, r1, len, 14, 1);
+  const m = new THREE.Mesh(g, mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  m.castShadow = true; m.frustumCulled = false;
+  m.updateMatrixWorld(true); parent.attach(m);
+  for (const p of [a, b]) { // round joints
+    const s = new THREE.Mesh(new THREE.SphereGeometry(p === a ? r1 : r2, 12, 8), mat);
+    s.position.copy(p); s.castShadow = true; s.frustumCulled = false; s.updateMatrixWorld(true); parent.attach(s);
+  }
+  return m;
+}
+function blob(parent, center, sx, sy, sz, mat, q) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), mat);
+  m.scale.set(sx, sy, sz); m.position.copy(center); if (q) m.quaternion.copy(q);
+  m.castShadow = true; m.frustumCulled = false; m.updateMatrixWorld(true); parent.attach(m); return m;
+}
+function boxAt(parent, center, sx, sy, sz, mat, q) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+  m.position.copy(center); if (q) m.quaternion.copy(q);
+  m.castShadow = true; m.frustumCulled = false; m.updateMatrixWorld(true); parent.attach(m); return m;
+}
+function dressSuit(bm, lift, a, height) {
+  lift.updateMatrixWorld(true);
+  const staff = a.kind === 'staff';
+  const suit = staff ? STAFF_SUIT : CUST_SUITS[Math.floor(rt() * CUST_SUITS.length)];
+  const trou = staff ? STAFF_TROUSER : suit;
+  const skin = SKIN[Math.floor(rt() * SKIN.length)], hair = HAIR[Math.floor(rt() * HAIR.length)];
+  const shirt = SHIRT[Math.floor(rt() * SHIRT.length)];
+  const k = height / 1.75, W = k * (0.95 + rt() * 0.12);
+  const P_ = (n) => wp(bm[n]);
+  const hips = P_('Hips'), sp = P_('Spine'), sp2 = P_('Spine2'), neck = P_('Neck'), head = P_('Head');
+  const fwdv = new THREE.Vector3(0, 0, 1).applyQuaternion(lift.getWorldQuaternion(new THREE.Quaternion()));
+  const qBody = lift.getWorldQuaternion(new THREE.Quaternion());
+  // legs (trousers) + shoes
+  for (const s of ['Left', 'Right']) {
+    const up = P_(s + 'UpLeg'), kn = P_(s + 'Leg'), ft = P_(s + 'Foot'), toe = P_(s + 'ToeBase');
+    seg(bm[s + 'UpLeg'], up, kn, 0.085 * W, 0.068 * W, trou);
+    seg(bm[s + 'Leg'], kn, ft, 0.066 * W, 0.055 * W, trou);
+    const mid = ft.clone().add(toe).multiplyScalar(0.5); mid.y = Math.max(0.045, mid.y - 0.02);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), toe.clone().sub(ft).setY(0).normalize());
+    boxAt(bm[s + 'Foot'], mid, 0.1 * W, 0.08 * k, 0.27 * k, SHOE, q);
+  }
+  // pelvis + torso (jacket), shirt front panel
+  blob(bm.Hips, hips.clone().add(new THREE.Vector3(0, 0.02 * k, 0)), 0.17 * W, 0.12 * k, 0.12 * W, trou, qBody);
+  seg(bm.Spine, hips.clone().add(new THREE.Vector3(0, 0.04 * k, 0)), sp2, 0.17 * W, 0.19 * W, suit);
+  const chestTop = neck.clone().lerp(sp2, 0.25);
+  seg(bm.Spine2, sp2, chestTop, 0.19 * W, 0.17 * W, suit);
+  blob(bm.Spine2, chestTop.clone().add(new THREE.Vector3(0, -0.01, 0)), 0.22 * W, 0.07 * k, 0.12 * W, suit, qBody); // shoulders
+  // jacket hem a bit below hips
+  seg(bm.Hips, hips.clone().add(new THREE.Vector3(0, 0.06 * k, 0)), hips.clone().add(new THREE.Vector3(0, -0.12 * k, 0)), 0.18 * W, 0.175 * W, suit);
+  // shirt V on the chest
+  const vC = sp2.clone().lerp(chestTop, 0.55).add(fwdv.clone().multiplyScalar(0.165 * W));
+  const vq = qBody.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.15, 0, Math.PI)));
+  const tri = new THREE.Mesh(new THREE.ConeGeometry(0.075 * W, 0.24 * k, 3, 1), shirt);
+  tri.scale.set(1, 1, 0.25); tri.position.copy(vC); tri.quaternion.copy(vq); tri.frustumCulled = false;
+  tri.updateMatrixWorld(true); bm.Spine2.attach(tri);
+  // neck + head (faceless) + hair
+  seg(bm.Neck, neck.clone().add(new THREE.Vector3(0, -0.03 * k, 0)), head.clone().add(new THREE.Vector3(0, 0.02 * k, 0)), 0.052 * k, 0.05 * k, skin);
+  const hc = head.clone().add(new THREE.Vector3(0, 0.1 * k, 0.01 * k));
+  blob(bm.Head, hc, 0.088 * k, 0.115 * k, 0.1 * k, skin, qBody);
+  const hairC = hc.clone().add(new THREE.Vector3(0, 0.035 * k, 0)).add(fwdv.clone().multiplyScalar(-0.012 * k));
+  blob(bm.Head, hairC, 0.094 * k, 0.095 * k, 0.103 * k, hair, qBody);
+  // arms (sleeves), white cuffs, hands
+  for (const s of ['Left', 'Right']) {
+    const sh = P_(s + 'Arm'), el = P_(s + 'ForeArm'), wr = P_(s + 'Hand');
+    seg(bm[s + 'Arm'], sh, el, 0.062 * W, 0.052 * W, suit);
+    const cuffStart = el.clone().lerp(wr, 0.88);
+    seg(bm[s + 'ForeArm'], el, cuffStart, 0.05 * W, 0.045 * W, suit);
+    seg(bm[s + 'ForeArm'], cuffStart, wr, 0.04 * W, 0.038 * W, shirt);
+    const hd = bm[s + 'HandMiddle1'] ? P_(s + 'HandMiddle1') : wr.clone().add(wr.clone().sub(el).normalize().multiplyScalar(0.08 * k));
+    const hcen = wr.clone().lerp(hd, 0.7);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hd.clone().sub(wr).normalize());
+    blob(bm[s + 'Hand'], hcen, 0.03 * k, 0.065 * k, 0.045 * k, skin, q);
+  }
+}
 const views = sim.agents.map((a) => {
-  const src = bodies[a.body];
-  const info = bodyInfo[a.body];
+  const body = SUIT ? 1 : a.body;
+  const src = bodies[body];
+  const info = bodyInfo[body];
   const inner = SkeletonUtils.clone(src);
-  const height = a.kind === 'staff' ? 1.72 : 1.6 + rt() * 0.28;
+  const height = a.kind === 'staff' ? 1.74 : 1.62 + rt() * 0.26;
   const s = height / info.height;
   inner.scale.multiplyScalar(s);
   inner.rotation.y = -info.yaw;
@@ -306,17 +396,19 @@ const views = sim.agents.map((a) => {
   inner.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false;
+      if (SUIT) { o.visible = false; return; }
       o.material = o.material.clone();
       if (o.material.color) o.material.color.lerp(tint, a.kind === 'staff' ? Math.min(0.7, TINT * 1.5) : TINT).multiplyScalar(1 + TINT / 3);
     }
   });
   scene.add(lift);
+  const bm = boneMap(inner);
+  if (SUIT) dressSuit(bm, lift, a, height);
   const mixer = new THREE.AnimationMixer(inner);
-  const WALK = CLIPS[a.body].walk, IDLE = CLIPS[a.body].idle;
+  const WALK = CLIPS[body].walk, IDLE = CLIPS[body].idle;
   const walk = mixer.clipAction(WALK), idle = mixer.clipAction(IDLE);
   walk.play(); idle.play();
   walk.time = rt() * WALK.duration; idle.time = rt() * IDLE.duration;
-  const bm = boneMap(inner);
   // standing hips height
   lift.updateMatrixWorld(true);
   const hipsY = bm.Hips.getWorldPosition(new THREE.Vector3()).y;
@@ -378,6 +470,15 @@ function syncAgents(dt) {
     v.lift.position.set(a.x, 0, a.z);
     v.lift.rotation.y = a.heading;
     v.lift.updateMatrixWorld(true);
+    if (SUIT && a.sit < 1) { // the walk clip holds the arms out from the body: bring them down along the sides
+      for (const side of ['Left', 'Right']) {
+        const ub = v.bm[side + 'Arm'], fb = v.bm[side + 'ForeArm'];
+        ub.updateMatrixWorld(true);
+        const d = wp(fb).sub(wp(ub)).normalize();
+        const tgt = d.clone().lerp(DOWN, 0.65); tgt.y = Math.min(tgt.y, -0.85 * tgt.length()); tgt.normalize();
+        aim(ub, fb, tgt, 0.9 * (1 - a.sit));
+      }
+    }
     if (a.sit > 0) {
       const w = a.sit;
       fwd.set(Math.sin(a.heading), 0, Math.cos(a.heading));
