@@ -34,7 +34,7 @@ const DEFAULT_QUEUE: Zone = { x1: 0.3, y1: 0.3, x2: 0.7, y2: 0.95 };
 // wall-clock time (outside render), used to limit how often the dashboard is updated
 const wallClock = () => performance.now();
 
-export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, invoices }: Props) {
+function LiveVisionPanel({ isAr, settings, onStats, onJourneys, invoices }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -362,7 +362,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
     { c: "bg-blue-100 text-blue-800", txt: `${t("تحليل مباشر", "Live analysis")} · ${ms ? Math.round(ms) + " ms/frame" : "…"}` };
 
   return (
-    <div className="lg:col-span-2 bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col gap-4">
+    <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col gap-3 h-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="font-bold text-sm text-slate-900 flex items-center gap-2">
           <Scan size={18} className="text-blue-600" />
@@ -470,3 +470,6 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
     </div>
   );
 }
+
+// re-render only when its own inputs change, not on every dashboard update
+export default React.memo(LiveVisionPanel);

@@ -249,10 +249,10 @@ export default function Home() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8 space-y-8 relative">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">
+      <main className="flex-1 overflow-y-auto p-6 space-y-5 relative">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
+            <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
               {activeTab === "branches" ? (isAr ? "الفروع" : "Branches") : activeTab === "analytics" ? (isAr ? "التحليلات" : "Analytics") : (isAr ? "لوحة تجربة العملاء" : "Customer Experience Dashboard")}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -276,10 +276,9 @@ export default function Home() {
         </header>
 
         {/* TAB 1: DASHBOARD — stays mounted while hidden so a running video or simulation keeps going */}
-        <div className={activeTab === "dashboard" ? "space-y-8" : "hidden"}>
-          <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} onJourneys={onJourneys} invoices={invoices} />
-
-          <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} onActive={setActiveData} />
+        <div className={activeTab === "dashboard" ? "" : "hidden"}>
+          <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} onActive={setActiveData}
+            videoSlot={<LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} onJourneys={onJourneys} invoices={invoices} />} />
         </div>
 
         {/* BRANCHES */}

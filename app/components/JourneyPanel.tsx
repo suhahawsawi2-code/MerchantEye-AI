@@ -26,6 +26,8 @@ type Props = {
   onSettings: (s: JourneySettings) => void;
   onInvoices: (inv: Invoice[]) => void;
   onActive?: (d: ActiveJourneyData | null) => void;
+  /** The video analysis screen; placed in the middle so the numbers sit around it. */
+  videoSlot?: React.ReactNode;
 };
 
 type Source = "video" | "file" | "sim";
@@ -33,7 +35,7 @@ type Source = "video" | "file" | "sim";
 const LEVEL_COLOR = { ok: "bg-emerald-500", near: "bg-amber-500", late: "bg-rose-500" } as const;
 const LEVEL_TEXT = { ok: "text-emerald-700", near: "text-amber-700", late: "text-rose-700" } as const;
 
-export default function JourneyPanel({ isAr, video, settings, onSettings, onInvoices, onActive }: Props) {
+export default function JourneyPanel({ isAr, video, settings, onSettings, onInvoices, onActive, videoSlot }: Props) {
   const t = (ar: string, en: string) => (isAr ? ar : en);
   const [source, setSource] = useState<Source>("video");
   // a newly opened video always takes over the board, even if a results file or the simulation was showing
@@ -148,7 +150,7 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
   );
 
   return (
-    <section className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-5">
+    <section className="bg-white/80 backdrop-blur-md p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <h2 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
           <Route size={18} className="text-blue-600" />
@@ -210,7 +212,7 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
 
       {showSettings && <SettingsForm isAr={isAr} s={settings} onChange={onSettings} />}
       {source !== "sim" && feed && feed.now > 0 && feed.now < 300 && settings.serveLimitSec >= 60 && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
           {t("الفيديو قصير وحدود التأخير بالدقائق، فما راح يطلع تأخير.", "Short clip with limits in minutes: nothing will show as late.")}
           <button onClick={() => onSettings(SHORT_VIDEO_SETTINGS)} className="px-2.5 py-1 rounded-lg bg-blue-600 text-white">{t("استخدمي حدود الفيديو القصير (بالثواني)", "Use short-clip limits (seconds)")}</button>
         </div>
@@ -236,11 +238,14 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
         <Tile label={t("طلعوا بدون خدمة", "Left without service")} value={`${lost}`} warn={lost > 0} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* the video in the middle, live lists beside it */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+        <div className="lg:col-span-2 min-w-0">{videoSlot}</div>
+        <div className="flex flex-col gap-4 min-h-0 lg:h-0 lg:min-h-full">
         {/* live customers */}
-        <div className="rounded-2xl border border-slate-200 p-4 space-y-2">
+        <div className="rounded-2xl border border-slate-200 p-4 space-y-2 flex flex-col min-h-0 flex-1">
           <h3 className="text-xs font-extrabold text-slate-900">{t(`العملاء الآن (${active.length})`, `In the café now (${active.length})`)}</h3>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+          <div className="space-y-1.5 flex-1 min-h-0 max-h-64 lg:max-h-none overflow-y-auto">
             {active.length === 0 && <p className="text-[11px] text-slate-400">{t("ما فيه عملاء حالياً", "No customers right now")}</p>}
             {active.slice(-25).reverse().map((j) => {
               const st = serviceStatus(j, now, settings);
@@ -259,7 +264,24 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
             })}
           </div>
         </div>
+        {/* alerts */}
+        <div className="rounded-2xl border border-slate-200 p-4 space-y-2 flex flex-col min-h-0 flex-1">
+          <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5"><Bell size={14} className="text-rose-500" />{t("التنبيهات", "Alerts")}</h3>
+          <div className="space-y-1.5 flex-1 min-h-0 max-h-64 lg:max-h-none overflow-y-auto">
+            {alerts.length === 0 && <p className="text-[11px] text-slate-400">{t("ما فيه تنبيهات", "No alerts")}</p>}
+            {alerts.map((a) => (
+              <div key={a.key} className={`text-[11px] p-2 rounded-xl border ${a.level === "urgent" ? "bg-rose-50 border-rose-200" : a.level === "ops" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+                <span className="font-mono font-bold text-slate-500 me-1.5">{clockLabel(a.t, mode)}</span>
+                <span className="font-semibold text-slate-800">{isAr ? a.ar : a.en}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        </div>
+      </div>
 
+      {/* under the video: latest journeys and the analyst's summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* journey timelines */}
         <div className="rounded-2xl border border-slate-200 p-4 space-y-2">
           <h3 className="text-xs font-extrabold text-slate-900">{t("الخط الزمني لآخر العملاء", "Latest journeys")}</h3>
@@ -269,7 +291,7 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
             <span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />{t("بعد الخدمة", "After service")}</span>
           </div>
           <div className="space-y-1.5" dir="ltr">
-            {recent.map((j) => {
+            {recent.slice(0, 6).map((j) => {
               const end = j.tExit ?? now;
               const order = j.tOrder ?? (j.tServed ?? end);
               const servedAt = j.tServed ?? end;
@@ -290,24 +312,8 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
             {recent.length === 0 && <p className="text-[11px] text-slate-400" dir={isAr ? "rtl" : "ltr"}>{t("بتظهر هنا رحلات العملاء", "Journeys will appear here")}</p>}
           </div>
         </div>
-
-        {/* alerts */}
-        <div className="rounded-2xl border border-slate-200 p-4 space-y-2">
-          <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5"><Bell size={14} className="text-rose-500" />{t("التنبيهات", "Alerts")}</h3>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {alerts.length === 0 && <p className="text-[11px] text-slate-400">{t("ما فيه تنبيهات", "No alerts")}</p>}
-            {alerts.map((a) => (
-              <div key={a.key} className={`text-[11px] p-2 rounded-xl border ${a.level === "urgent" ? "bg-rose-50 border-rose-200" : a.level === "ops" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
-                <span className="font-mono font-bold text-slate-500 me-1.5">{clockLabel(a.t, mode)}</span>
-                <span className="font-semibold text-slate-800">{isAr ? a.ar : a.en}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* analyst */}
-      <div className="p-4 rounded-2xl bg-gradient-to-l from-blue-50 to-indigo-50 border border-blue-200 space-y-2">
+      <div className="p-4 rounded-2xl h-full bg-gradient-to-l from-blue-50 to-indigo-50 border border-blue-200 space-y-2">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-blue-600" />
           <h3 className="text-xs font-extrabold text-slate-900">{t("المحلل الذكي: ملخص اليوم", "AI analyst: day summary")}</h3>
@@ -320,16 +326,17 @@ export default function JourneyPanel({ isAr, video, settings, onSettings, onInvo
         </p>
         {summary && <p className="text-[10px] text-slate-500 font-bold">{t(`مكتوب الساعة ${clockLabel(summary.at, mode)} من الأرقام فقط، بدون مشاهدة الفيديو.`, `Written at ${clockLabel(summary.at, mode)} from the numbers only.`)}</p>}
       </div>
+      </div>
     </section>
   );
 }
 
 function Tile({ label, value, sub, bar, warn }: { label: string; value: string; sub?: string; bar?: number; warn?: boolean }) {
   return (
-    <div className="p-3 rounded-2xl border border-slate-200 bg-white space-y-1">
-      <p className="text-[10px] font-bold text-slate-500">{label}</p>
-      <p className={`text-lg font-extrabold ${warn ? "text-rose-600" : "text-slate-900"}`}><span dir="ltr">{value}</span></p>
-      {sub && <p className="text-[10px] text-slate-400 font-semibold">{sub}</p>}
+    <div className="px-3 py-2 rounded-2xl border border-slate-200 bg-white space-y-0.5">
+      <p className="text-[10px] font-bold text-slate-500 truncate">{label}</p>
+      <p className={`text-base font-extrabold ${warn ? "text-rose-600" : "text-slate-900"}`}><span dir="ltr">{value}</span></p>
+      {sub && <p className="text-[10px] text-slate-400 font-semibold truncate">{sub}</p>}
       {bar !== undefined && <div className="h-1.5 rounded bg-slate-100 overflow-hidden"><div className={`h-full ${bar >= 1 ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${bar * 100}%` }} /></div>}
     </div>
   );
