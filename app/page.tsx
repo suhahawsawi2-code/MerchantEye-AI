@@ -2,67 +2,34 @@
 
 import React, { useState, useCallback } from "react";
 import LiveVisionPanel from "./components/LiveVisionPanel";
-import type { FrameStats, EngineSettings } from "./lib/visionEngine";
+import JourneyPanel, { type ActiveJourneyData, type VideoJourneyFeed } from "./components/JourneyPanel";
+import AnalyticsView from "./components/AnalyticsView";
+import BranchesView, { BRANCHES } from "./components/BranchesView";
+import { DEFAULT_JOURNEY_SETTINGS, type Invoice, type JourneySettings } from "./lib/journey";
+import type { EngineSettings } from "./lib/visionEngine";
 import { motion } from "framer-motion";
-import { 
-  Sparkles, Camera, TrendingUp, Clock, ShieldCheck, 
-  Layers, ArrowRight, Check, HelpCircle, Users, 
-  ChevronDown, Languages, Play, BarChart2, CheckCircle2,
-  Building2, Lock, Flame, Upload, Pause, LayoutDashboard, PieChart,
-  FileText, LogOut, Video, Scan, Activity, Download,
-  FileSpreadsheet, FileCode, Calendar, BarChart as BarChartIcon, Mail,
-  MapPin, UserCheck, Zap, AlertCircle
-} from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
+import { Sparkles, ArrowRight, Languages, Play, CheckCircle2, LayoutDashboard, LogOut, PieChart, Store } from "lucide-react";
 
 // التحليل يتم مباشرة داخل المتصفح: YOLOv8 (ONNX) + تتبّع + منطقة الطابور — انظري app/lib/visionEngine.ts
 const ENGINE_SETTINGS: EngineSettings = { conf: 0.35, waitThresholdSec: 180, queueLimit: 4 };
 
-const formatWait = (sec: number) => {
-  const s = Math.round(sec);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-};
 
-// بيانات التحليلات التفصيلية
-const hourlyAnalytics = [
-  { hour: "08 AM", footfall: 35, avgDwell: 2.1, queuePeak: 1 },
-  { hour: "10 AM", footfall: 78, avgDwell: 3.4, queuePeak: 2 },
-  { hour: "12 PM", footfall: 142, avgDwell: 5.8, queuePeak: 5 },
-  { hour: "02 PM", footfall: 98, avgDwell: 4.2, queuePeak: 3 },
-  { hour: "04 PM", footfall: 85, avgDwell: 3.9, queuePeak: 2 },
-  { hour: "06 PM", footfall: 190, avgDwell: 7.1, queuePeak: 6 },
-  { hour: "08 PM", footfall: 130, avgDwell: 4.8, queuePeak: 4 },
-];
 
-const zoneAnalytics = [
-  { zone: "منطقة المحاسبين (Checkout Area)", traffic: "عالي جداً (Hot)", dwellAvg: "4.2 min", status: "تكدس متكرر", color: "#EF4444" },
-  { zone: "مدخل المتجر الرئيسي (Entrance)", traffic: "عالي (Warm)", dwellAvg: "0.8 min", status: "انسيابي", color: "#3B82F6" },
-  { zone: "رفوف المأكولات الطازجة (Fresh Food)", traffic: "متوسط (Warm)", dwellAvg: "3.1 min", status: "طبيعي", color: "#10B981" },
-  { zone: "قسم العروض الخاصة (Promotions)", traffic: "عالي جداً (Hot)", dwellAvg: "5.5 min", status: "انتباه عالي", color: "#F59E0B" },
-];
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<"landing" | "login" | "dashboard">("landing");
   const [lang, setLang] = useState<"ar" | "en">("ar");
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
-  const [stats, setStats] = useState<FrameStats | null>(null);
-  const onStats = useCallback((s: FrameStats | null) => setStats(s), []);
+  const [branchId, setBranchId] = useState(BRANCHES[0].id);
+  const branch = BRANCHES.find((b) => b.id === branchId) ?? BRANCHES[0];
+  const onStats = useCallback(() => {}, []);   // the per-frame queue numbers are no longer shown; the journey board replaces them
+  const [journeyFeed, setJourneyFeed] = useState<VideoJourneyFeed | null>(null);
+  const onJourneys = useCallback((f: VideoJourneyFeed | null) => setJourneyFeed(f), []);
+  const [journeySettings, setJourneySettings] = useState<JourneySettings>(DEFAULT_JOURNEY_SETTINGS);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [activeData, setActiveData] = useState<ActiveJourneyData | null>(null);
   const isAr = lang === "ar";
 
-  const handleDownload = (format: string) => {
-    setDownloadingFormat(format);
-    setTimeout(() => {
-      setDownloadingFormat(null);
-      alert(isAr ? `تم تنزيل التقرير بنجاح بصيغة (${format})` : `Report downloaded successfully as ${format}`);
-    }, 1200);
-  };
-
-  const currentFrameData = stats;
-  const insightText = stats
-    ? (isAr ? stats.insightAr : stats.insightEn)
-    : (isAr ? "ارفعي فيديو أو شغّلي الفيديو التجريبي، وستظهر التوصيات هنا لحظياً." : "Upload a video or play the sample — live recommendations will appear here.");
-  const currentTime = stats?.t ?? 0;
 
   // 1️⃣ VIEW: LANDING PAGE
   if (currentView === "landing") {
@@ -262,19 +229,19 @@ export default function Home() {
 
           <nav className="space-y-1.5">
             <NavItem icon={<LayoutDashboard size={18} />} label={isAr ? "اللوحة الرئيسية" : "Dashboard"} active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
-            <NavItem icon={<PieChart size={18} />} label={isAr ? "التحليلات التفصيلية" : "Analytics"} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
-            <NavItem icon={<FileText size={18} />} label={isAr ? "التقارير والتنزيل" : "Reports & Exports"} active={activeTab === "reports"} onClick={() => setActiveTab("reports")} />
+            <NavItem icon={<Store size={18} />} label={isAr ? "الفروع" : "Branches"} active={activeTab === "branches"} onClick={() => setActiveTab("branches")} />
+            <NavItem icon={<PieChart size={18} />} label={isAr ? "التحليلات" : "Analytics"} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
           </nav>
         </div>
 
         <div className="border-t border-slate-100 pt-4 px-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
-              RIY
+              {branch.code}
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-800">{isAr ? "فرع الرياض الرئيسي" : "Riyadh Main Branch"}</p>
-              <p className="text-[10px] text-slate-400">{isAr ? "متجر #104" : "Store #104"}</p>
+              <p className="text-xs font-bold text-slate-800">{isAr ? branch.ar : branch.en}</p>
+              <p className="text-[10px] text-slate-400">{isAr ? branch.cityAr : branch.cityEn}</p>
             </div>
           </div>
           <LogOut size={16} onClick={() => setCurrentView("landing")} className="text-slate-400 cursor-pointer hover:text-rose-600 transition" />
@@ -282,16 +249,18 @@ export default function Home() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8 space-y-8 relative">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">
+      <main className="flex-1 overflow-y-auto p-6 space-y-5 relative">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-              {activeTab === "dashboard" && (isAr ? "لوحة التحكم الحية" : "Live Executive Dashboard")}
-              {activeTab === "analytics" && (isAr ? "التحليلات الجغرافية والسلوكية" : "Heatmaps & Behavioral Analytics")}
-              {activeTab === "reports" && (isAr ? "مركز التقارير والتصدير الذكي" : "Reports & Export Center")}
+            <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
+              {activeTab === "branches" ? (isAr ? "الفروع" : "Branches") : activeTab === "analytics" ? (isAr ? "التحليلات" : "Analytics") : (isAr ? "لوحة تجربة العملاء" : "Customer Experience Dashboard")}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              {isAr ? "منظومة عين التاجر لتحويل رؤية الفيديو إلى قرارات استراتيجية" : "MerchantEye Vision AI Engine"}
+              {activeTab === "branches"
+                ? (isAr ? "كل فروعك في مكان واحد: تجربة العملاء وحالة كل فرع الآن" : "All your branches in one place: customer experience and status of each")
+                : activeTab === "analytics"
+                ? (isAr ? `${branch.ar} · أرقام ورسوم من رحلات العملاء التي طلعت من تحليل الفيديو` : `${branch.en} · charts from the customer journeys found in the video`)
+                : (isAr ? `${branch.ar} · رحلة كل عميل من دخوله إلى خروجه، ووقت خدمته` : `${branch.en} · every customer's journey from entry to exit`)}
             </p>
           </div>
 
@@ -303,163 +272,24 @@ export default function Home() {
               <Languages size={16} className="text-blue-600" />
               <span>{isAr ? "English" : "العربية"}</span>
             </button>
-            <button onClick={() => handleDownload("PDF")} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md shadow-blue-500/10 transition">
-              <Download size={14} />
-              <span>{downloadingFormat ? (isAr ? "جاري التصدير..." : "Exporting...") : (isAr ? "تنزيل تقرير ملخص" : "Download Summary")}</span>
-            </button>
           </div>
         </header>
 
-        {/* TAB 1: DASHBOARD */}
-        {activeTab === "dashboard" && (
-          <div className="space-y-8">
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <KPICard title={isAr ? "مؤشر تجربة العملاء" : "CX Score"} value={currentFrameData ? `\u2066${currentFrameData.cxScore} / 100\u2069` : "—"} change={isAr ? "مؤشر محسوب" : "Computed index"} isPositive={true} badge="Index" icon={<Sparkles className="w-5 h-5 text-blue-600" />} />
-              <KPICard title={isAr ? "متوسط وقت الانتظار" : "Avg Waiting Time"} value={currentFrameData ? formatWait(currentFrameData.avgWaitSec) : "—"} change={isAr ? "من التتبع" : "From tracking"} isPositive={!currentFrameData || currentFrameData.level !== "alert"} badge={currentFrameData?.level === "alert" ? "Alert" : "Normal"} icon={<Clock className="w-5 h-5 text-amber-500" />} />
-              <KPICard title={isAr ? "العملاء الآن" : "Live Customers"} value={currentFrameData ? `${currentFrameData.visitorsNow} ${isAr ? "أشخاص" : "People"}` : "—"} change="YOLOv8" isPositive={true} badge="Detected" icon={<Users className="w-5 h-5 text-teal-600" />} />
-              <KPICard title={isAr ? "طابور الانتظار" : "Queue Count"} value={currentFrameData ? `${currentFrameData.queueCount} ${isAr ? "منتظرين" : "Waiting"}` : "—"} change={isAr ? "منطقة الطابور" : "Queue zone"} isPositive={!currentFrameData || currentFrameData.queueCount <= 2} badge={currentFrameData && currentFrameData.queueCount > 2 ? "Crowded" : "Normal"} icon={<Flame className="w-5 h-5 text-rose-500" />} />
-              <KPICard title={isAr ? "زمن الفيديو" : "Video Timecode"} value={`${currentTime.toFixed(1)}s`} change={stats ? `${Math.round(stats.inferenceMs)} ms/frame` : "—"} isPositive={true} badge="Live" icon={<Activity className="w-5 h-5 text-indigo-600" />} />
-            </section>
+        {/* TAB 1: DASHBOARD — stays mounted while hidden so a running video or simulation keeps going */}
+        <div className={activeTab === "dashboard" ? "" : "hidden"}>
+          <JourneyPanel isAr={isAr} video={journeyFeed} settings={journeySettings} onSettings={setJourneySettings} onInvoices={setInvoices} onActive={setActiveData}
+            videoSlot={<LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} onJourneys={onJourneys} invoices={invoices} />} />
+        </div>
 
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <LiveVisionPanel isAr={isAr} settings={ENGINE_SETTINGS} onStats={onStats} />
-
-              <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 bg-blue-50 rounded-2xl text-blue-600"><Sparkles size={20} /></div>
-                    <h3 className="font-extrabold text-sm text-slate-900">{isAr ? "توصية اللقطة الحالية" : "Current Frame Insight"}</h3>
-                  </div>
-                  <div className="p-4 bg-blue-50/70 rounded-2xl border border-blue-200/80 space-y-2">
-                    <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-md">{currentTime.toFixed(1)}s</span>
-                    <p className="text-xs font-semibold text-slate-800 leading-relaxed">{insightText}</p>
-                  </div>
-                </div>
-                <button className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm">{isAr ? "تطبيق الإجراء" : "Apply Action"}</button>
-              </div>
-            </section>
-          </div>
+        {/* BRANCHES */}
+        {activeTab === "branches" && (
+          <BranchesView isAr={isAr} current={branchId} data={activeData} settings={journeySettings}
+            onOpen={(id) => { setBranchId(id); setActiveTab("dashboard"); }} />
         )}
 
-        {/* TAB 2: DETAILED ANALYTICS (صفحة التحليلات المطلوبة) */}
+        {/* TAB 2: ANALYTICS — built from the same journeys */}
         {activeTab === "analytics" && (
-          <div className="space-y-8">
-            {/* Top Stat Row */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KPICard title={isAr ? "إجمالي الزوار اليوم" : "Total Visitors"} value="756" change="+14.2%" isPositive={true} badge="Daily" icon={<Users className="w-5 h-5 text-blue-600" />} />
-              <KPICard title={isAr ? "ساعة الذروة اليومية" : "Peak Hour"} value="06:00 PM" change="190 Visitors" isPositive={true} badge="High Traffic" icon={<Zap className="w-5 h-5 text-amber-500" />} />
-              <KPICard title={isAr ? "متوسط المكوث (Dwell)" : "Avg Dwell Time"} value="4.5 min" change="-0.4 min" isPositive={true} badge="Optimal" icon={<Clock className="w-5 h-5 text-emerald-600" />} />
-              <KPICard title={isAr ? "معدل التكدس بالنظام" : "Congestion Rate"} value="8.4%" change="-2.1%" isPositive={true} badge="Controlled" icon={<AlertCircle className="w-5 h-5 text-rose-500" />} />
-            </section>
-
-            {/* Charts Grid */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Hourly Footfall Chart */}
-              <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-900">{isAr ? "حركة الزوار بالساعات (Footfall Trend)" : "Hourly Footfall Trend"}</h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{isAr ? "توزيع تدفق الزوار على مدار اليوم" : "Distribution of customer visits throughout the day"}</p>
-                  </div>
-                  <span className="text-[10px] bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg font-bold">Today</span>
-                </div>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={hourlyAnalytics}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderRadius: '12px', color: '#FFF', fontSize: '12px' }} />
-                      <Area type="monotone" dataKey="footfall" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorFootfall)" />
-                      <defs>
-                        <linearGradient id="colorFootfall" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0.0}/>
-                        </linearGradient>
-                      </defs>
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Dwell Time & Queue Chart */}
-              <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-900">{isAr ? "أقصى طول لطابور الانتظار (Queue Peak)" : "Peak Queue Length"}</h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{isAr ? "أعلى عدد منتظرين مسجل عند المحاسبين" : "Highest waiting count per hour"}</p>
-                  </div>
-                  <span className="text-[10px] bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg font-bold">Live Stream Data</span>
-                </div>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={hourlyAnalytics}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748B' }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderRadius: '12px', color: '#FFF', fontSize: '12px' }} />
-                      <Bar dataKey="queuePeak" fill="#F59E0B" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </section>
-
-            {/* Zone Analytics & Heatmap Breakdown */}
-            <section className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900">{isAr ? "تحليل المناطق الكثيفة والباردة (Hot/Cold Zones)" : "Heatmap & Zone Performance"}</h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{isAr ? "رصد توزع حركة الزوار ومدة بقائهم في أقسام المتجر" : "Customer dwell time and footfall by store section"}</p>
-                </div>
-                <button className="text-xs font-bold text-blue-600 hover:underline">{isAr ? "تصدير الخريطة الحرارية" : "Export Heatmap"}</button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {zoneAnalytics.map((item, idx) => (
-                  <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/60 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-white text-slate-700 shadow-sm">{item.status}</span>
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-xs text-slate-900">{item.zone}</h4>
-                      <p className="text-[11px] text-slate-500 mt-1">{isAr ? "معدل الحركة:" : "Traffic:"} <span className="font-bold text-slate-800">{item.traffic}</span></p>
-                    </div>
-                    <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center text-[11px]">
-                      <span className="text-slate-400">{isAr ? "متوسط المكوث:" : "Avg Dwell:"}</span>
-                      <span className="font-bold font-mono text-slate-800">{item.dwellAvg}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
-
-        {/* TAB 3: REPORTS & EXPORTS */}
-        {activeTab === "reports" && (
-          <div className="space-y-6">
-            <div className="bg-white/80 backdrop-blur-md p-8 rounded-3xl border border-slate-200/80 shadow-sm text-center max-w-2xl mx-auto space-y-4">
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto text-2xl">
-                📄
-              </div>
-              <h3 className="font-black text-lg text-slate-900">{isAr ? "مركز تصدير التقارير الموثقة" : "Export Official Reports"}</h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-                {isAr ? "اختر الصيغة المناسبة لتصدير تقارير حركة الزوار، أوقات الانتظار، وتقييم تجربة العملاء الموثقة للتحكيم." : "Export verified analytics reports for retail audits and judging evaluations."}
-              </p>
-              <div className="flex items-center justify-center gap-4 pt-4">
-                <button onClick={() => handleDownload("PDF")} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2 transition">
-                  <Download size={16} />
-                  <span>PDF Report</span>
-                </button>
-                <button onClick={() => handleDownload("CSV")} className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm flex items-center gap-2 transition">
-                  <FileSpreadsheet size={16} />
-                  <span>CSV Data</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <AnalyticsView isAr={isAr} data={activeData} settings={journeySettings} onGoToDashboard={() => setActiveTab("dashboard")} />
         )}
 
       </main>
@@ -467,7 +297,7 @@ export default function Home() {
   );
 }
 
-function NavItem({ icon, label, active, onClick }: any) {
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${active ? "bg-blue-50 text-[#2563EB] shadow-sm font-bold" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}>
       {icon}
@@ -476,22 +306,3 @@ function NavItem({ icon, label, active, onClick }: any) {
   );
 }
 
-function KPICard({ title, value, change, isPositive, badge, icon }: any) {
-  return (
-    <div className="bg-white/80 backdrop-blur-md p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-      <div className="flex justify-between items-start">
-        <span className="text-xs font-semibold text-slate-400">{title}</span>
-        <div className="p-2 bg-slate-50 rounded-2xl">{icon}</div>
-      </div>
-      <div className="mt-4">
-        <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">{value}</h3>
-        <div className="flex items-center justify-between mt-2">
-          <span className={`text-[10px] font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-600'} flex items-center gap-0.5`}>
-            {change}
-          </span>
-          <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">{badge}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
