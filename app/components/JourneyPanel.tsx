@@ -36,6 +36,12 @@ const LEVEL_TEXT = { ok: "text-emerald-700", near: "text-amber-700", late: "text
 export default function JourneyPanel({ isAr, video, settings, onSettings, onInvoices, onActive }: Props) {
   const t = (ar: string, en: string) => (isAr ? ar : en);
   const [source, setSource] = useState<Source>("video");
+  // a newly opened video always takes over the board, even if a results file or the simulation was showing
+  const [seenRun, setSeenRun] = useState<number | null>(null);
+  if (video && video.runId !== seenRun) {
+    setSeenRun(video.runId);
+    if (source !== "video") setSource("video");
+  }
 
   // --- simulation clock
   const day = useMemo(() => simulateDay(7), []);

@@ -96,7 +96,16 @@ export function loadModel(onProgress?: (pct: number) => void): Promise<any> {
       const [ort, bytes] = await Promise.all([loadOrt(), fetchWithProgress(MODEL_URL)]);
       ort.env.wasm.wasmPaths = "/ort/";
       ort.env.wasm.numThreads = (window as any).crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
-      const session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+      // run the model in a background worker so the page stays responsive while a video is analysed
+      ort.env.wasm.proxy = true;
+      let session;
+      try {
+        session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+      } catch (err) {
+        console.warn("[MerchantEye] worker inference unavailable, running on the page", err);
+        ort.env.wasm.proxy = false;
+        session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+      }
       progressListeners.forEach((f) => f(100));
       return session;
     })();

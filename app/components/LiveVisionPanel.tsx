@@ -31,6 +31,9 @@ const EMPTY_EXTRA = { pickup: [] as Zone[], table: [] as Zone[], door: [] as Zon
 
 const DEFAULT_QUEUE: Zone = { x1: 0.3, y1: 0.3, x2: 0.7, y2: 0.95 };
 
+// wall-clock time (outside render), used to limit how often the dashboard is updated
+const wallClock = () => performance.now();
+
 export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, invoices }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -75,6 +78,9 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
     return { queue: z.queueZones, staff: z.staffZones, pickup: z.extra.pickup, tables: z.extra.table, door: z.extra.door };
   };
   const [hasResults, setHasResults] = useState(false);
+  const [videoErr, setVideoErr] = useState("");
+  const hasResultsRef = useRef(false);
+  const msRef = useRef(0);
 
   const t = (ar: string, en: string) => (isAr ? ar : en);
 
@@ -92,12 +98,25 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
     historyRef.current = [];
     itemsRef.current = [];
     framesRef.current = 0;
+    hasResultsRef.current = false;
     setHasResults(false);
     onStats(null);
     onJourneysRef.current?.(null);
   }, [onStats]);
 
+  // the dashboard is redrawn at most ~4 times a second while a video plays (boxes on the video stay per-frame)
+  const lastEmitRef = useRef(0);
+  const trailingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emitJourneys = (now: number, ended: boolean) => {
+    const wall = wallClock();
+    if (trailingRef.current) { clearTimeout(trailingRef.current); trailingRef.current = null; }
+    if (!ended && wall - lastEmitRef.current < 250) {
+      // make sure the latest frame is still shown when playback pauses
+      const run = runIdRef.current;
+      trailingRef.current = setTimeout(() => { trailingRef.current = null; if (run === runIdRef.current) emitJourneys(now, false); }, 300);
+      return;
+    }
+    lastEmitRef.current = wall;
     onJourneysRef.current?.({
       journeys: journeyRef.current.journeys(), now, ended, runId: runIdRef.current,
       label: `${videoNameRef.current} · YOLOv8n`,
@@ -107,6 +126,7 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
 
   const openVideo = (src: string, name: string) => {
     resetAnalysis();
+    setVideoErr("");
     tableSeenRef.current = [];
     setAutoNote("");
     setExtra((e) => ({ ...e, table: [] }));
@@ -227,8 +247,8 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
         emitJourneys(tNow, false);
         const stats = computeStats(states, tNow, took, settingsRef.current);
         historyRef.current.push(stats);
-        setHasResults(true);
-        setMs(took);
+        if (!hasResultsRef.current) { hasResultsRef.current = true; setHasResults(true); }
+        if (Math.abs(took - msRef.current) > 15) { msRef.current = took; setMs(took); }
         onStats(stats);
       } catch (err) {
         console.error("[MerchantEye] analysis error", err);
@@ -366,12 +386,20 @@ export default function LiveVisionPanel({ isAr, settings, onStats, onJourneys, i
             onEnded={() => { const end = videoRef.current?.duration ?? lastTRef.current; journeyRef.current.finish(end); emitJourneys(end, true); }}
             onLoadedMetadata={(e) => { e.currentTarget.playbackRate = slow ? 0.5 : 1; }}
             onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)}
+            onError={() => setVideoErr(t(
+              "المتصفح ما قدر يشغّل هذا الفيديو. غالباً صيغته HEVC (فيديو الآيفون .MOV). حوّليه إلى MP4 (H.264) أو صوّري بإعداد «الأكثر توافقاً» في الكاميرا، وارفعيه مرة ثانية.",
+              "The browser can't play this video, most likely HEVC (iPhone .MOV). Convert it to MP4 (H.264) or record with the camera's \"Most Compatible\" setting, then upload again."))}
             className="w-full h-full object-contain" />
         ) : (
           <div className="text-center space-y-2 p-6">
             <Film size={32} className="mx-auto text-blue-400" />
             <p className="text-xs font-bold text-slate-300">{t("ارفعي فيديو من كاميرا مراقبة أو جرّبي الفيديو التجريبي", "Upload a CCTV video or try the sample video")}</p>
             <p className="text-[11px] text-slate-500">{t("التحليل يتم داخل متصفحك، ولا يُرسل الفيديو لأي خادم", "Analysis runs in your browser — the video is never uploaded to a server")}</p>
+          </div>
+        )}
+        {videoErr && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-6 text-center">
+            <p className="max-w-md text-xs font-bold leading-6 text-rose-200">{videoErr}</p>
           </div>
         )}
         <canvas ref={canvasRef}
